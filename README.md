@@ -4,7 +4,7 @@ An authenticated Node.js gateway for OpenAI-, Anthropic-, and A2E-backed LLM ope
 
 ## What is verified
 
-The repository CI performs a clean locked install on Node 20 and Node 22, syntax-checks every executable file, runs unit tests, starts the real Express/SQLite process, exercises the HTTP routes with the hermetic echo provider, and runs a production dependency audit.
+The repository CI performs a clean locked install on Node 22 and Node 24, syntax-checks every executable file, runs unit tests, starts the real Express/SQLite process, exercises the HTTP routes with the hermetic echo provider, and runs a production dependency audit.
 
 The HTTP/CLI auditor is narrower. Its strongest status is `STATIC_HEALTH_VERIFIED`, which means only:
 
@@ -16,7 +16,7 @@ It does **not** claim dependency, provider, deployment, load, penetration, or en
 
 ## Runtime requirements
 
-- Node.js 20 or 22
+- Node.js 22 or 24
 - npm with the committed lockfile
 - writable SQLite data directory
 - at least one provider credential in production
@@ -71,7 +71,7 @@ Provider credentials supplied by clients are disabled by default. Set `LLM_GATEW
 | GET | `/calls/recent?n=50` | admin | Recent bounded call telemetry |
 | GET | `/stats?since_ms=86400000` | admin | Aggregated bounded telemetry |
 
-Streaming chat is not implemented. Requests with `stream: true` receive a typed `400 streaming_not_supported` response instead of a misleading buffered response.
+The gateway intentionally exposes non-streaming chat only. Requests with `stream: true` receive a typed `400 streaming_not_supported` response instead of a misleading buffered response.
 
 ## Client usage
 
