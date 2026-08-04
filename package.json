@@ -31,12 +31,12 @@
     "audit:full": "node bin/audit.mjs --full"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^22.0.0 || ^24.0.0"
   },
-  "packageManager": "npm@10.9.2",
+  "packageManager": "npm@10.9.8",
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
-    "express": "^4.21.0"
+    "better-sqlite3": "^12.10.0",
+    "express": "^4.22.2"
   },
   "license": "MIT"
 }
