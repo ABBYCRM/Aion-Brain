@@ -25,7 +25,7 @@ Never expose provider or administrator credentials to browser code.
 8. Send an authenticated hermetic or low-cost inference request.
 9. Confirm `/calls/recent` and `/stats` require the administrator token.
 
-The Blueprint uses `npm ci`, `npm start`, Node 22, a 30-second shutdown delay, and persistent SQLite storage.
+The Blueprint uses `npm ci`, `npm start`, Node 24, a 30-second shutdown delay, and persistent SQLite storage.
 
 ## Generic Node deployment
 
