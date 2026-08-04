@@ -1,0 +1,664 @@
+{
+  "ts": 1785874718495,
+  "duration_ms": 174,
+  "mode": "full",
+  "status": "PARTIAL",
+  "inventory_files": 12,
+  "p0_count": 1,
+  "p1_count": 20,
+  "p2_count": 34,
+  "verified_fixes": 4,
+  "unverified_fixes": 0,
+  "phases": {
+    "phase0_inventory": {
+      "duration_ms": 30,
+      "files": 12,
+      "manifest": [
+        {
+          "path": "bin/audit.mjs",
+          "sha256": "6ad8546e6715d3463a1e468cd859f739501b3e9ce3fc4fccccdca500bc117083",
+          "lines": 57,
+          "bytes": 2222
+        },
+        {
+          "path": "data-real-1785874710498/last-real-report.json",
+          "sha256": "822696dc8d68cc05f8bd1984e795ef4d61f1c7f04b653ff250ba2f97b4cbc9c0",
+          "lines": 649,
+          "bytes": 22912
+        },
+        {
+          "path": "lib/auditor.js",
+          "sha256": "6272dd657fd8046d818adbf7c3cdb4221f5c6527f7bada27b618b6aef6495335",
+          "lines": 244,
+          "bytes": 9346
+        },
+        {
+          "path": "lib/client.js",
+          "sha256": "de792acb462569a6b28006dc6229c75ba8c04e2de6fa7ef07f99dbe615cee0e6",
+          "lines": 54,
+          "bytes": 1859
+        },
+        {
+          "path": "lib/router.js",
+          "sha256": "87f388f00a853ffe2242dfcdcf058d606a16bc21637b4d262fe8fe3be08ad997",
+          "lines": 270,
+          "bytes": 10379
+        },
+        {
+          "path": "lib/rules.js",
+          "sha256": "afa4ab620b18fbd7e61436e7c242dee59712f60e60c09dd11f28d964e5e592e1",
+          "lines": 410,
+          "bytes": 14296
+        },
+        {
+          "path": "lib/store.js",
+          "sha256": "5d65fa5c6a7079d9a59ec808b18b4c56b0f4e7be6202a784bd9b5fb6fe4d4ee1",
+          "lines": 152,
+          "bytes": 5101
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "6660e26c73281e596c37bcae56dc0d1ef651b97303a5dcd578b5708867c676ba",
+          "lines": 1259,
+          "bytes": 52698
+        },
+        {
+          "path": "package.json",
+          "sha256": "77f766783e97dc03fdb008fc44df98ae2cac4ca7f567c493e4c778d08ef967c9",
+          "lines": 27,
+          "bytes": 669
+        },
+        {
+          "path": "server.js",
+          "sha256": "78e2dbb3b66c9d9176838afab1c7e2c986ae65b2395465ea734d4bc2d820d358",
+          "lines": 292,
+          "bytes": 11355
+        },
+        {
+          "path": "test/smoke-real.mjs",
+          "sha256": "363cea1c1c6caff0d3b4f70a4e094915f4ae8c29b6f3360ac92d186da38e95d7",
+          "lines": 119,
+          "bytes": 4208
+        },
+        {
+          "path": "test/smoke.mjs",
+          "sha256": "312058b2ccc243f73104c821e0dd0b022e507500a5c3030ff637c2f80c501c7e",
+          "lines": 178,
+          "bytes": 5879
+        }
+      ]
+    },
+    "phase1_baseline": {
+      "duration_ms": 22,
+      "memory": {
+        "rss": 86638592,
+        "heap_used": 11824568,
+        "heap_total": 20668416,
+        "external": 3647808
+      },
+      "health_samples": [
+        {
+          "latency_ms": 3,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 3,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 1,
+          "status": 200,
+          "ok": true
+        },
+        {
+          "latency_ms": 2,
+          "status": 200,
+          "ok": true
+        }
+      ],
+      "health_p50": 2,
+      "health_p95": 3,
+      "health_n": 10,
+      "health_ok_n": 10
+    },
+    "phase2_static": {
+      "duration_ms": 87,
+      "findings": [
+        {
+          "rule": "P0-sync-fs-in-async",
+          "severity": "P0",
+          "file": "test/smoke-real.mjs",
+          "line": 102,
+          "message": "Sync fs call on a hot path. Blocks event loop.",
+          "snippet": "writeFileSync(reportFile, JSON.stringify(last, null, 2));",
+          "fix": "Use async fs/promises API."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "bin/audit.mjs",
+          "line": 56,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "process.exit(report.status === 'VERIFIED_COMPLETE' ? 0 : 1);",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-await-in-loop",
+          "severity": "P1",
+          "file": "lib/auditor.js",
+          "line": 107,
+          "message": "await inside a for/forEach. Use Promise.all for parallelism.",
+          "snippet": "for (let i = 0; i < 10; i++) {",
+          "fix": "Collect promises and await Promise.all."
+        },
+        {
+          "rule": "P1-await-in-loop",
+          "severity": "P1",
+          "file": "lib/router.js",
+          "line": 58,
+          "message": "await inside a for/forEach. Use Promise.all for parallelism.",
+          "snippet": "for (const provider of this.providers) {",
+          "fix": "Collect promises and await Promise.all."
+        },
+        {
+          "rule": "P1-json-parse-no-try",
+          "severity": "P1",
+          "file": "lib/router.js",
+          "line": 134,
+          "message": "JSON.parse without try/catch. Throws on malformed input.",
+          "snippet": "const json = text ? JSON.parse(text) : {};",
+          "fix": "Wrap in try/catch; return a typed error."
+        },
+        {
+          "rule": "P1-json-parse-no-try",
+          "severity": "P1",
+          "file": "lib/router.js",
+          "line": 217,
+          "message": "JSON.parse without try/catch. Throws on malformed input.",
+          "snippet": "return { raw: text ? JSON.parse(text) : {} };",
+          "fix": "Wrap in try/catch; return a typed error."
+        },
+        {
+          "rule": "P1-json-parse-no-try",
+          "severity": "P1",
+          "file": "lib/router.js",
+          "line": 245,
+          "message": "JSON.parse without try/catch. Throws on malformed input.",
+          "snippet": "const json = JSON.parse(text);",
+          "fix": "Wrap in try/catch; return a typed error."
+        },
+        {
+          "rule": "P1-await-in-loop",
+          "severity": "P1",
+          "file": "lib/rules.js",
+          "line": 40,
+          "message": "await inside a for/forEach. Use Promise.all for parallelism.",
+          "snippet": "lines.forEach((ln, i) => {",
+          "fix": "Collect promises and await Promise.all."
+        },
+        {
+          "rule": "P1-nested-loop",
+          "severity": "P1",
+          "file": "lib/rules.js",
+          "line": 173,
+          "message": "Nested for/forEach with no break — likely O(n^2).",
+          "snippet": "lines.forEach((ln, i) => {",
+          "fix": "Consider a Map/Set keyed lookup."
+        },
+        {
+          "rule": "P1-nested-loop",
+          "severity": "P1",
+          "file": "lib/rules.js",
+          "line": 180,
+          "message": "Nested for/forEach with no break — likely O(n^2).",
+          "snippet": "sets.forEach(line => findings.push({ line, snippet: '', fix: 'Ensure clearInterval is called on shutdown.' }));",
+          "fix": "Consider a Map/Set keyed lookup."
+        },
+        {
+          "rule": "P1-await-in-loop",
+          "severity": "P1",
+          "file": "lib/rules.js",
+          "line": 211,
+          "message": "await inside a for/forEach. Use Promise.all for parallelism.",
+          "snippet": "lines.forEach((ln, i) => {",
+          "fix": "Collect promises and await Promise.all."
+        },
+        {
+          "rule": "P1-json-parse-no-try",
+          "severity": "P1",
+          "file": "lib/store.js",
+          "line": 116,
+          "message": "JSON.parse without try/catch. Throws on malformed input.",
+          "snippet": "return { ...row, report: JSON.parse(row.report_json) };",
+          "fix": "Wrap in try/catch; return a typed error."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "server.js",
+          "line": 283,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "server.close(() => { try { store.close(); } catch {} ; process.exit(0); });",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "server.js",
+          "line": 284,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "setTimeout(() => process.exit(1), 10_000).unref();",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "test/smoke-real.mjs",
+          "line": 12,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "process.exit(0);",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-await-in-loop",
+          "severity": "P1",
+          "file": "test/smoke-real.mjs",
+          "line": 27,
+          "message": "await inside a for/forEach. Use Promise.all for parallelism.",
+          "snippet": "for (let i = 0; i < 50; i++) {",
+          "fix": "Collect promises and await Promise.all."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "test/smoke-real.mjs",
+          "line": 109,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "process.exit(1);",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "test/smoke-real.mjs",
+          "line": 114,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "process.exit(1);",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-await-in-loop",
+          "severity": "P1",
+          "file": "test/smoke.mjs",
+          "line": 31,
+          "message": "await inside a for/forEach. Use Promise.all for parallelism.",
+          "snippet": "for (let i = 0; i < 50; i++) {",
+          "fix": "Collect promises and await Promise.all."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "test/smoke.mjs",
+          "line": 168,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "process.exit(1);",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P1-process-exit",
+          "severity": "P1",
+          "file": "test/smoke.mjs",
+          "line": 173,
+          "message": "process.exit in request handler kills the server.",
+          "snippet": "process.exit(1);",
+          "fix": "Return an error response instead."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 27,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`\\n=== llm-gateway self-audit (${report.mode}) ===`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 28,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`status:           ${report.status}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 29,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`duration:         ${report.duration_ms}ms`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 30,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`files inventoried:${report.inventory_files}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 31,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`findings:         P0=${p0}  P1=${p1}  P2=${p2}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 32,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`verified fixes:   ${report.verified_fixes}   unverified: ${unv}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 34,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('\\n--- P0 findings (must fix) ---');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 36,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`  ${f.file}:${f.line}  [${f.rule}]  ${f.message}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 37,
+          "message": "console.log in production code path.",
+          "snippet": "if (f.snippet) console.log(`    > ${f.snippet}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 38,
+          "message": "console.log in production code path.",
+          "snippet": "if (f.fix) console.log(`    fix: ${f.fix}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 42,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('\\n--- P1 findings (top 20) ---');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 44,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`  ${f.file}:${f.line}  [${f.rule}]  ${f.message}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 48,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('\\n--- UNVERIFIED claimed fixes (possible hallucinations) ---');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 50,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`  identifier not found in source: ${u.id}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "bin/audit.mjs",
+          "line": 53,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-todo",
+          "severity": "P2",
+          "file": "lib/rules.js",
+          "line": 264,
+          "message": "TODO marker — unfinished work in production code.",
+          "snippet": "message: 'TODO marker — unfinished work in production code.',",
+          "fix": "Resolve or move to issue tracker."
+        },
+        {
+          "rule": "P2-todo",
+          "severity": "P2",
+          "file": "lib/rules.js",
+          "line": 267,
+          "message": "TODO marker — unfinished work in production code.",
+          "snippet": "const re = /\\b(TODO|FIXME|XXX)\\b/;",
+          "fix": "Resolve or move to issue tracker."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "server.js",
+          "line": 69,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(JSON.stringify({ t: new Date().toISOString(), req_id: req.id, m: req.method, p: req.path, s: res.statusCode, ms: dt }));",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "server.js",
+          "line": 282,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(JSON.stringify({ t: new Date().toISOString(), msg: `shutting down on ${sig}` }));",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "server.js",
+          "line": 290,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(JSON.stringify({ t: new Date().toISOString(), msg: 'llm-gateway listening', port: PORT, providers: router.providers.map(p => p.name) }));",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 11,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('SKIP: OPENAI_API_KEY not set. Run with: OPENAI_API_KEY=sk-... node test/smoke-real.mjs');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 36,
+          "message": "console.log in production code path.",
+          "snippet": "if (cond) { console.log(`PASS  ${name}  — ${detail || ''}`); passed++; }",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 37,
+          "message": "console.log in production code path.",
+          "snippet": "else { console.log(`FAIL  ${name}  — ${detail || ''}`); failed++; }",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 64,
+          "message": "console.log in production code path.",
+          "snippet": "if (!r.ok) console.log('chat error body:', JSON.stringify(j).slice(0, 500));",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 103,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`\\nlast audit report saved to ${reportFile}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 105,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`\\n=== ${passed} passed, ${failed} failed ===`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 107,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('--- server log tail ---');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke-real.mjs",
+          "line": 108,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(serverLog.split('\\n').slice(-10).join('\\n'));",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke.mjs",
+          "line": 44,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  ${detail ? '— ' + detail : ''}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke.mjs",
+          "line": 160,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('\\n--- server log tail ---');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke.mjs",
+          "line": 161,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(serverLog.split('\\n').slice(-15).join('\\n'));",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke.mjs",
+          "line": 164,
+          "message": "console.log in production code path.",
+          "snippet": "console.log(`\\n=== ${results.length - failed.length}/${results.length} passed ===`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke.mjs",
+          "line": 166,
+          "message": "console.log in production code path.",
+          "snippet": "console.log('FAILED:');",
+          "fix": "Use a logger with levels; gate debug logs."
+        },
+        {
+          "rule": "P2-console-log",
+          "severity": "P2",
+          "file": "test/smoke.mjs",
+          "line": 167,
+          "message": "console.log in production code path.",
+          "snippet": "for (const f of failed) console.log(`  - ${f.name}: ${f.detail}`);",
+          "fix": "Use a logger with levels; gate debug logs."
+        }
+      ],
+      "count": 55
+    },
+    "phase3_verify": {
+      "duration_ms": 35,
+      "claimed": 4,
+      "verified": 4,
+      "unverified": []
+    }
+  }
+}
