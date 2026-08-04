@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. Backtick claims are checked for exact path or source-token presence by the bounded static auditor; they are not behavioral proof.
 
+## 0.2.1 — supported-runtime refresh — 2026-08-04
+
+- Replaced end-of-life Node 20 verification with maintained Node 22 and Node 24 LTS coverage.
+- Upgraded `better-sqlite3` to the supported 12.x line and Express to the current maintained 4.x release.
+- Updated `.github/workflows/ci.yml` to current Node 24-based action releases.
+
 ## 0.2.0 — security and runtime hardening — 2026-08-04
 
 - Fixed `CircuitBreaker` failure accounting and cooldown behavior in `lib/router.js`.
