@@ -25,6 +25,7 @@ import {
   OpenAIProvider, A2EProvider, AnthropicProvider, EchoProvider,
 } from './lib/router.js';
 import { Auditor } from './lib/auditor.js';
+import { Brain } from './lib/brain.js';
 import { mkdirSync, existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -100,14 +101,14 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.0' });
+  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.6' });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.0',
+    version: '0.1.6',
     description: 'Plug-and-play LLM gateway with self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -251,6 +252,34 @@ app.post('/audit/run', async (req, res) => {
   const file = join(REPORTS_DIR, `audit-${report.ts}.json`);
   try { await writeFile(file, JSON.stringify(report, null, 2)); } catch (e) { console.error('write report failed', e.message); }
   res.json(report);
+});
+
+// ---- BOS-OMEGA Brain routes ----
+// Autonomous audit → research → propose (apply only for already-verified local patches)
+
+const brain = new Brain({ root: ROOT, store });
+
+app.post('/brain/audit-and-fix', async (req, res) => {
+  const apply = req.body?.apply === true;
+  const severities = Array.isArray(req.body?.severities) ? req.body.severities : ['P0', 'P1'];
+  try {
+    const result = await brain.runCycle({ apply, severities });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: { code: 'brain_cycle_failed', message: e.message, request_id: req.id } });
+  }
+});
+
+app.get('/brain/status', (req, res) => {
+  res.json({
+    name: 'BOS-OMEGA Brain',
+    version: '0.1.6',
+    endpoints: [
+      'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
+      'GET  /brain/status',
+    ],
+    policy: 'propose_only by default; apply=true only re-applies already-verified local patches. No hallucinated code is written.',
+  });
 });
 
 // ---- Observability ----
