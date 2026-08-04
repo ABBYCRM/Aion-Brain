@@ -3,16 +3,36 @@ services:
     name: llm-gateway
     runtime: node
     plan: starter
-    buildCommand: npm install
-    startCommand: node server.js
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci
+    startCommand: npm start
     healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 30
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: NODE_VERSION
-        value: "22"
-      - key: PORT
-        value: "10000"
+        value: "24"
       - key: LLM_GATEWAY_DATA_DIR
-        value: "/var/data/llm-gateway"
+        value: /var/data/llm-gateway
+      - key: LLM_GATEWAY_REPORTS_DIR
+        value: /var/data/llm-gateway/reports
+      - key: LLM_GATEWAY_ALLOW_ECHO
+        value: "false"
+      - key: LLM_GATEWAY_ALLOW_CLIENT_PROVIDER_KEYS
+        value: "false"
+      - key: LLM_GATEWAY_API_KEYS
+        sync: false
+      - key: LLM_GATEWAY_ADMIN_TOKEN
+        sync: false
+      - key: LLM_GATEWAY_CORS_ORIGINS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: A2E_API_KEY
+        sync: false
     disk:
       name: llm-gateway-data
       mountPath: /var/data/llm-gateway

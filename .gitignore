@@ -1,14 +1,30 @@
 # dependencies
 node_modules/
 
-# data (SQLite + audit reports live here locally; on Render we mount /var/data)
+# runtime databases, WAL files, generated audit output, and smoke artifacts
 data/
-data-smoke*/
+data-*/
 reports/
+reports-*/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 
-# env
+# environment and secrets
 .env
-.env.local
+.env.*
+!.env.example
 
-# os
+# tests and tooling
+coverage/
+.nyc_output/
+.cache/
+.npm/
+
+# editors and OS
 .DS_Store
+.idea/
+.vscode/
+*.swp
