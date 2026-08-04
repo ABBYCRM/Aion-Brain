@@ -12,7 +12,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: "22"
+        value: "24"
       - key: LLM_GATEWAY_DATA_DIR
         value: /var/data/llm-gateway
       - key: LLM_GATEWAY_REPORTS_DIR
