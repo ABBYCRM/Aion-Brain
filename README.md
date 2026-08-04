@@ -64,6 +64,30 @@ It's OpenAI-compatible.
 | GET    | `/calls/recent?n=50`          | Recent call log                                    |
 | GET    | `/stats`                      | Aggregated provider/operation stats                |
 
+### AION API (kernel + 7-law decision + SSE chat)
+
+Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
+
+| Method | Path                          | Auth         | Purpose                                |
+|--------|-------------------------------|--------------|----------------------------------------|
+| GET    | `/api/continuity-pack`        | public       | 7 laws + 3 decision states + identity  |
+| GET    | `/api/models`                 | AION key     | Provider chain + probes                |
+| GET    | `/api/audit/recent`           | AION admin   | Last audit report                      |
+| POST   | `/api/decision`                | AION key     | 7-law kernel decision for a prompt     |
+| POST   | `/api/chat`                   | AION key     | SSE chat with decision + attempt + open + delta + done |
+
+Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`.
+
+SSE event names (exact match with AION v2 backend):
+```
+data: {"type":"decision","decision":{"state":"COMMIT","score":0.75,"checks":[...]}}
+data: {"type":"attempt","provider":"openai","model":"gpt-4o-mini","index":1}
+data: {"type":"open","provider":"openai","model":"gpt-4o-mini"}
+data: {"type":"delta","text":"..."}
+data: {"type":"done","provider":"openai","model":"gpt-4o-mini","latency_ms":1203,"finish_reason":"stop"}
+data: [DONE]
+```
+
 ### Per-request credentials
 
 The gateway accepts credentials via headers on every request, so a single

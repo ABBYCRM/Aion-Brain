@@ -26,6 +26,9 @@ import {
 } from './lib/router.js';
 import { Auditor } from './lib/auditor.js';
 import { Brain } from './lib/brain.js';
+import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, DecisionState } from './lib/aion_kernel.js';
+import { AionChain } from './lib/aion_chain.js';
+import { aionSettings } from './lib/aion_settings.js';
 import { mkdirSync, existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -53,6 +56,43 @@ function buildDefaultChain() {
 }
 
 let router = new Router({ providers: buildDefaultChain(), breaker, store });
+const aionChain = AionChain.fromEnv({ breaker, store, appId: 'aion-brain' });
+
+// Validate AION settings on boot (mirrors AION v2 fail-closed behavior)
+try { aionSettings.validateStartup(); }
+catch (e) { console.log(JSON.stringify({ t: new Date().toISOString(), msg: 'aion.startup.warning', error: e.message })); }
+
+// ---- AION auth (X-AION-Key / Authorization: Bearer) ----
+function _aionAuthenticate(req) {
+  const token = req.header('x-aion-key') || (req.header('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!aionSettings.authRequired()) {
+    return { subject: 'development', is_admin: true };
+  }
+  if (!token) return null;
+  if (aionSettings.isAdminKey(token)) return { subject: aionSettings.subjectFor(token), is_admin: true };
+  if (aionSettings.isUserKey(token)) return { subject: aionSettings.subjectFor(token), is_admin: false };
+  return null;
+}
+function aionRequire(req) {
+  const p = _aionAuthenticate(req);
+  if (!p) {
+    const err = new Error('authentication_failed');
+    err.statusCode = 401;
+    err.public = { detail: 'invalid_credentials' };
+    throw err;
+  }
+  return p;
+}
+function aionAdmin(req) {
+  const p = aionRequire(req);
+  if (!p.is_admin) {
+    const err = new Error('admin_required');
+    err.statusCode = 403;
+    err.public = { detail: 'admin_required' };
+    throw err;
+  }
+  return p;
+}
 
 const app = express();
 app.disable('x-powered-by');
@@ -101,14 +141,14 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.6' });
+  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.7' });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.6',
+    version: '0.1.7',
     description: 'Plug-and-play LLM gateway with self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -227,6 +267,104 @@ app.post('/v1/messages', async (req, res) => {
   });
 });
 
+// ---- AION API routes (v2 contract) ----
+// Ported from AION v2 FastAPI app. Same request/response shapes, same SSE
+// event names, same fail-closed auth, same 200+ok=false discipline.
+
+app.get('/api/continuity-pack', (req, res) => {
+  res.json(AION_CONTINUITY_PACK);
+});
+
+app.get('/api/models', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  res.json({
+    chain: aionSettings.fallbackModels[0] ? [aionSettings.primaryModel, ...aionSettings.fallbackModels] : [aionSettings.primaryModel],
+    primary: aionSettings.primaryModel,
+    providers: aionChain.providers.map(p => ({ name: p.name, base: p.baseUrl || null, configured: Boolean(p.apiKey || true) })),
+  });
+});
+
+app.get('/api/audit/recent', (req, res) => {
+  try { aionAdmin(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const last = store.lastAudit();
+  const events = last ? [last] : [];
+  res.json({ events });
+});
+
+app.post('/api/decision', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const userInput = String(req.body?.user_input || '').trim();
+  if (!userInput) return res.status(400).json({ detail: 'user_input_required' });
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(0, 100) : [];
+  const ctx = new MissionContext({ userInput, history });
+  const decision = resolveDecision(ctx);
+  store.recordCall({ ts: Date.now(), app_id: ctx.fingerprint(), provider: 'kernel', model: '7-law', operation: 'aion.decision', status: 200, latency_ms: 0, request_id: ctx.requestId });
+  res.json({ request_id: ctx.requestId, decision });
+});
+
+app.post('/api/chat', async (req, res) => {
+  let principal;
+  try { principal = aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+  if (messages.length === 0) return res.status(400).json({ ok: false, error: 'messages_required', kind: 'invalid_request' });
+  // Enforce client role restriction (no system role)
+  for (const m of messages) {
+    if (m && m.role && !['user', 'assistant'].includes(m.role)) {
+      return res.status(422).json({ detail: `role '${m.role}' not allowed` });
+    }
+  }
+  const lastUser = [...messages].reverse().find(m => m && m.role === 'user');
+  if (!lastUser) return res.status(400).json({ ok: false, error: 'user_message_required', kind: 'invalid_request' });
+  const userText = typeof lastUser.content === 'string' ? lastUser.content
+    : (Array.isArray(lastUser.content) ? lastUser.content.map(p => p.text || '').join('\n') : '');
+  const temperature = Number.isFinite(req.body?.temperature) ? req.body.temperature : 0.7;
+  const maxTokens = Number.isFinite(req.body?.max_tokens) ? req.body.max_tokens : 1024;
+  if (maxTokens < aionSettings.minCompletionTokens || maxTokens > aionSettings.maxCompletionTokens) {
+    return res.status(422).json({ detail: `max_tokens must be ${aionSettings.minCompletionTokens}..${aionSettings.maxCompletionTokens}` });
+  }
+  if (userText.length > aionSettings.maxMessageChars) {
+    return res.status(400).json({ ok: false, error: 'message_text_too_large', kind: 'invalid_request' });
+  }
+  // Build AION decision
+  const history = messages.slice(0, -1).map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' }));
+  const ctx = new MissionContext({ userInput: userText, history });
+  const decision = resolveDecision(ctx);
+  // Build AION system prompt (placeholder; no tools yet)
+  const systemPrompt = buildSystemPrompt(decision, { toolContext: '', notesContext: '' });
+  const fullMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('X-AION-Decision', decision.state);
+  res.flushHeaders && res.flushHeaders();
+
+  // 1) decision event
+  res.write(`data: ${JSON.stringify({ type: 'decision', request_id: ctx.requestId, decision })}\n\n`);
+
+  // 2) stream
+  try {
+    for await (const evt of aionChain.stream({ messages: fullMessages, temperature, maxTokens })) {
+      res.write(evt);
+    }
+  } catch (e) {
+    res.write(`data: ${JSON.stringify({ type: 'error', kind: 'stream_failed', message: e.message })}\n\n`);
+  }
+  res.write('data: [DONE]\n\n');
+  res.end();
+  // record
+  store.recordCall({
+    ts: ctx.startedAt,
+    app_id: principal.subject,
+    provider: 'aion',
+    model: aionSettings.primaryModel,
+    operation: 'aion.chat',
+    status: 200,
+    latency_ms: Date.now() - ctx.startedAt,
+    request_id: ctx.requestId,
+  });
+});
+
 // ---- Audit routes ----
 
 const auditor = new Auditor({ root: ROOT, mode: 'full' });
@@ -273,7 +411,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.6',
+    version: '0.1.7',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',
