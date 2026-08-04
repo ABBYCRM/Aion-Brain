@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -19,25 +23,14 @@ jobs:
       matrix:
         node-version: [20, 22]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - name: Install locked dependencies
-        run: npm ci
-      - name: Syntax check
-        run: |
-          node --check server.js
-          node --check lib/auditor.js
-          node --check lib/client.js
-          node --check lib/router.js
-          node --check lib/rules.js
-          node --check lib/store.js
-          node --check bin/audit.mjs
-          node --check test/smoke.mjs
-          node --check test/smoke-real.mjs
-      - name: Hermetic smoke
-        run: npm run smoke
-      - name: Dependency audit
+        run: npm ci --no-fund
+      - name: Verify syntax and behavior
+        run: npm run verify
+      - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
