@@ -33,7 +33,8 @@ jobs:
           cat .audit-payload/part-* > /tmp/aion-fixes.tar.gz
           echo 'f3005fc7e6a48e4d60edb6db7ddc3e4c6b57f371393d9c184db54a7d0c3fd53b  /tmp/aion-fixes.tar.gz' | sha256sum --check --strict
           tar -xzf /tmp/aion-fixes.tar.gz
-          rm -rf data-real-* .audit-payload .github/workflows/apply-audit-fixes.yml
+          rm -rf data-real-*
+          git checkout -- .github/workflows/ci.yml .github/workflows/apply-audit-fixes.yml
           rm -f package-lock.json
       - name: Generate portable lockfile
         run: npm install --package-lock-only --ignore-scripts --no-fund
@@ -43,7 +44,7 @@ jobs:
         run: npm run verify
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
-      - name: Commit verified files
+      - name: Commit verified non-workflow files
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
