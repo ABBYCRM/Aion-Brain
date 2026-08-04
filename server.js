@@ -58,9 +58,17 @@ function buildDefaultChain() {
 let router = new Router({ providers: buildDefaultChain(), breaker, store });
 const aionChain = AionChain.fromEnv({ breaker, store, appId: 'aion-brain' });
 
-// Validate AION settings on boot (mirrors AION v2 fail-closed behavior)
-try { aionSettings.validateStartup(); }
-catch (e) { console.log(JSON.stringify({ t: new Date().toISOString(), msg: 'aion.startup.warning', error: e.message })); }
+// Validate AION settings on boot (fail-closed in production)
+try {
+  aionSettings.validateStartup();
+} catch (e) {
+  console.error(JSON.stringify({
+    t: new Date().toISOString(),
+    msg: 'aion.startup.fatal',
+    error: e.message
+  }));
+  process.exit(1);
+}
 
 // ---- AION auth (X-AION-Key / Authorization: Bearer) ----
 function _aionAuthenticate(req) {
@@ -117,7 +125,7 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-  res.setHeader('access-control-allow-headers', 'content-type,authorization,x-openai-key,x-anthropic-key,x-a2e-key,x-app-id,x-request-id');
+  res.setHeader('access-control-allow-headers', 'content-type,authorization,x-openai-key,x-anthropic-key,x-a2e-key,x-aion-key,x-app-id,x-request-id');
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
@@ -141,14 +149,14 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.7' });
+  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.8' });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.7',
+    version: '0.1.8',
     description: 'Plug-and-play LLM gateway with self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -411,7 +419,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.7',
+    version: '0.1.8',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',

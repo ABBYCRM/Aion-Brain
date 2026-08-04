@@ -18,7 +18,14 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const DATA_DIR = join(process.cwd(), 'data-brain-' + Date.now());
 mkdirSync(DATA_DIR, { recursive: true });
 
-const env = { ...process.env, PORT: String(PORT), LLM_GATEWAY_DATA_DIR: DATA_DIR };
+const env = {
+  ...process.env,
+  PORT: String(PORT),
+  LLM_GATEWAY_DATA_DIR: DATA_DIR,
+  // v0.1.8 fail-closed startup: production requires AION keys; tests supply them.
+  AION_API_KEYS: 'smoke-brain-user-key',
+  AION_ADMIN_KEYS: 'smoke-brain-admin-key',
+};
 const server = spawn('node', ['server.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = '';
 server.stdout.on('data', d => serverLog += d.toString());
@@ -41,18 +48,18 @@ function check(name, cond, detail) {
 try {
   await ping();
 
-  // healthz shows v0.1.6
+  // healthz shows v0.1.8
   {
     const r = await fetch(`${BASE}/healthz`);
     const j = await r.json();
-    check('healthz v0.1.6', r.ok && j.version === '0.1.6', `version=${j.version}`);
+    check('healthz v0.1.8', r.ok && j.version === '0.1.8', `version=${j.version}`);
   }
 
   // brain status
   {
     const r = await fetch(`${BASE}/brain/status`);
     const j = await r.json();
-    check('GET /brain/status', r.ok && j.name === 'BOS-OMEGA Brain' && j.version === '0.1.6',
+    check('GET /brain/status', r.ok && j.name === 'BOS-OMEGA Brain' && j.version === '0.1.8',
       `name=${j.name} policy=${j.policy?.slice(0, 50)}...`);
   }
 

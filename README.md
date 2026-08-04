@@ -76,7 +76,9 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | POST   | `/api/decision`                | AION key     | 7-law kernel decision for a prompt     |
 | POST   | `/api/chat`                   | AION key     | SSE chat with decision + attempt + open + delta + done |
 
-Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`.
+Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`. The CORS
+preflight response advertises `x-aion-key` in `access-control-allow-headers`
+so browser clients sending the header don't get rejected.
 
 SSE event names (exact match with AION v2 backend):
 ```
@@ -84,9 +86,15 @@ data: {"type":"decision","decision":{"state":"COMMIT","score":0.75,"checks":[...
 data: {"type":"attempt","provider":"openai","model":"gpt-4o-mini","index":1}
 data: {"type":"open","provider":"openai","model":"gpt-4o-mini"}
 data: {"type":"delta","text":"..."}
-data: {"type":"done","provider":"openai","model":"gpt-4o-mini","latency_ms":1203,"finish_reason":"stop"}
+data: {"type":"done","streaming":"simulated","provider":"openai","model":"gpt-4o-mini","latency_ms":1203,"finish_reason":"stop"}
 data: [DONE]
 ```
+
+> **Note on streaming:** as of v0.1.8 the `delta` events are *simulated* — the
+> underlying providers return the full completion, which is then chunked into
+> delta events for UI compatibility. The `done` event carries
+> `"streaming": "simulated"` so consumers can detect this. True token-level
+> streaming requires provider-level stream support (future work).
 
 ### Per-request credentials
 
@@ -179,9 +187,13 @@ Mount a persistent disk if you want to survive restarts.
 
 ```
 llm-gateway/
-├── server.js              Express app, routes, audit endpoints
+├── server.js              Express app, LLM + AION + audit routes
 ├── lib/
-│   ├── router.js          Provider chain + circuit breaker
+│   ├── aion_kernel.js     7-law kernel (REALITY / CONTINUITY / FIDELITY / LATTICE / EPISTEMIC / PERPETUITY / DECISION)
+│   ├── aion_settings.js   Frozen Settings; fail-closed startup validation
+│   ├── aion_chain.js      Provider chain with name-based selection + SSE stream
+│   ├── brain.js           BOS-OMEGA Brain (audit → research → propose, propose-only)
+│   ├── router.js          LLM provider chain + circuit breaker
 │   ├── rules.js           22 static analysis rules
 │   ├── auditor.js         5-phase self-auditor
 │   ├── store.js           SQLite persistence (calls + audits)
@@ -189,7 +201,11 @@ llm-gateway/
 ├── bin/
 │   └── audit.mjs          CLI: node bin/audit.mjs
 ├── test/
-│   └── smoke.mjs          14-check end-to-end smoke
+│   ├── smoke.mjs          14-check base smoke
+│   ├── smoke-aion.mjs     10-check AION API smoke
+│   ├── smoke-brain.mjs    6-check Brain layer + real OpenAI
+│   ├── smoke-real.mjs     Real OpenAI smoke
+│   └── contract-aion-modules.mjs   8 unit/contract tests
 ├── CHANGELOG.md           Claimed fixes the auditor verifies
 └── reports/               Audit reports (one JSON per run)
 ```
