@@ -1,182 +1,134 @@
 # llm-gateway
 
-> Plug-and-play LLM gateway with a self-auditor built in. Drop it in front of any
-> LLM call in any app. Every call is logged, every call is measured, and the
-> gateway audits its own code on demand.
+An authenticated Node.js gateway for OpenAI-, Anthropic-, and A2E-backed LLM operations. It provides provider failover, bounded request handling, SQLite telemetry, operational endpoints, and a deliberately limited static/health auditor.
 
-OpenAI-compatible at the edge. If your code already calls OpenAI's REST API,
-you point it at the gateway and you're done.
+## What is verified
 
----
+The repository CI performs a clean locked install on Node 20 and Node 22, syntax-checks every executable file, runs unit tests, starts the real Express/SQLite process, exercises the HTTP routes with the hermetic echo provider, and runs a production dependency audit.
 
-## What it does
+The HTTP/CLI auditor is narrower. Its strongest status is `STATIC_HEALTH_VERIFIED`, which means only:
 
-- **Routes** every LLM call through a provider chain (OpenAI → A2E → Anthropic → Echo)
-  with circuit breaking, per-call cost/latency tracking, and a SQLite call log.
-- **Self-audits** with a 5-phase algorithm:
-  1. **Inventory** — sha256 every `.ts/.js/.mjs/.json` file in the repo
-  2. **Baseline** — measure health latency, memory, and self-availability
-  3. **Static** — run 22 rules over the source (P0 crash/security, P1 perf, P2 hygiene)
-  4. **Verify** — for every claimed fix in `CHANGELOG.md`, confirm the symbol still exists
-  5. **Report** — return `VERIFIED_COMPLETE` / `PARTIAL` / `BLOCKED` / `FAILED`
-- **Exposes** the audit on HTTP so any app (or cron) can hit it.
+- the configured process answered every health sample;
+- the static rules reported no P0/P1 finding;
+- exact changelog path/token claims were present.
 
----
+It does **not** claim dependency, provider, deployment, load, penetration, or end-to-end verification. CI and deployment checks remain authoritative.
 
-## Plug it into any app (3 lines)
+## Runtime requirements
 
-```js
-import { GatewayClient } from 'llm-gateway/client';
-const gw = new GatewayClient({ baseUrl: 'https://your-gateway', apiKey: process.env.OPENAI_API_KEY });
-const r = await gw.chat({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] });
+- Node.js 20 or 22
+- npm with the committed lockfile
+- writable SQLite data directory
+- at least one provider credential in production
+- separate gateway and administrator credentials in production
+
+Install and verify:
+
+```bash
+npm ci
+npm run verify
 ```
 
-Or, with the **raw OpenAI SDK** (no import needed — just change baseURL):
-```js
-import OpenAI from 'openai';
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: 'https://your-gateway/v1' });
+Start locally:
+
+```bash
+cp .env.example .env
+# Load the environment with your preferred tool, then:
+npm start
 ```
 
-For **Express apps**:
-```js
-import { gateway } from 'llm-gateway/middleware';
-app.use('/llm', gateway({ baseUrl: 'https://your-gateway' }));
+The server listens on `PORT`, defaulting to `10000`.
+
+## Authentication model
+
+Inference endpoints require `x-gateway-key`. Operational endpoints require the separate `x-admin-token` credential.
+
+```text
+x-gateway-key: <one value from LLM_GATEWAY_API_KEYS>
+x-admin-token: <LLM_GATEWAY_ADMIN_TOKEN>
+x-app-id: crm-production
+x-request-id: caller-generated-id
 ```
 
-For **anything else** (Python, Go, Zapier, cURL): hit the HTTP endpoint directly.
-It's OpenAI-compatible.
+`LLM_GATEWAY_API_KEYS` accepts comma-separated keys to support rotation. In production, startup fails when gateway keys, the administrator token, allowed CORS origins, or all real provider credentials are missing.
 
----
+Provider credentials supplied by clients are disabled by default. Set `LLM_GATEWAY_ALLOW_CLIENT_PROVIDER_KEYS=true` only when that trust model is intentional. When enabled, the supported headers are `x-openai-key`, `x-anthropic-key`, and `x-a2e-key`.
 
 ## Endpoints
 
-| Method | Path                          | Purpose                                            |
-|--------|-------------------------------|----------------------------------------------------|
-| GET    | `/healthz`                    | Liveness                                           |
-| POST   | `/v1/chat/completions`        | OpenAI-compatible chat                             |
-| POST   | `/v1/images/generations`      | OpenAI-compatible image gen                        |
-| POST   | `/v1/images/edits`            | OpenAI-compatible image edit                       |
-| POST   | `/v1/videos`                  | OpenAI-compatible video create                     |
-| POST   | `/v1/messages`                | Anthropic Messages API passthrough                  |
-| GET    | `/audit`                      | Last audit report (JSON)                           |
-| POST   | `/audit/run`                  | Run a fresh 5-phase audit (slow, ~1s)              |
-| GET    | `/audit/quick`                | Quick health + drift (fast, ~50ms)                 |
-| GET    | `/calls/recent?n=50`          | Recent call log                                    |
-| GET    | `/stats`                      | Aggregated provider/operation stats                |
+| Method | Path | Authentication | Purpose |
+|---|---|---|---|
+| GET | `/healthz` | public | Liveness/readiness, including SQLite ping |
+| GET | `/` | public | Minimal service metadata |
+| POST | `/v1/chat/completions` | gateway | OpenAI-style non-streaming chat |
+| POST | `/v1/images/generations` | gateway | OpenAI-style image generation |
+| POST | `/v1/images/edits` | gateway | JSON base64 or multipart image edit |
+| POST | `/v1/videos` | gateway | JSON or multipart video creation |
+| POST | `/v1/messages` | gateway | Anthropic-style messages response |
+| GET | `/audit` | admin | Most recently persisted full audit |
+| GET | `/audit/quick` | admin | Current process health-only audit |
+| POST | `/audit/run` | admin | Static and process-health audit |
+| GET | `/calls/recent?n=50` | admin | Recent bounded call telemetry |
+| GET | `/stats?since_ms=86400000` | admin | Aggregated bounded telemetry |
 
-### Per-request credentials
+Streaming chat is not implemented. Requests with `stream: true` receive a typed `400 streaming_not_supported` response instead of a misleading buffered response.
 
-The gateway accepts credentials via headers on every request, so a single
-deployment can serve multiple apps without leaking keys:
+## Client usage
 
+```js
+import { GatewayClient } from 'llm-gateway/client';
+
+const gateway = new GatewayClient({
+  baseUrl: 'https://gateway.example.com',
+  gatewayKey: process.env.LLM_GATEWAY_API_KEY,
+  appId: 'abby-crm',
+});
+
+const response = await gateway.chat({
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: 'Hello' }],
+});
 ```
-x-openai-key:    sk-...
-x-a2e-key:       ...
-x-anthropic-key: ...
-x-app-id:        my-app-name          (for call-log attribution)
-x-request-id:    uuid-v4              (echoed back, logged on errors)
-```
 
-If no header is provided, the gateway falls back to its own env-var config.
+The client applies a 30-second deadline by default, propagates request IDs, returns typed `GatewayError` failures, and keeps gateway authentication separate from provider credentials.
 
----
+## Provider behavior
 
-## Self-auditor
+The environment-defined default order is OpenAI, A2E, Anthropic. Echo is available only when `LLM_GATEWAY_ALLOW_ECHO=true` and no real provider is configured.
+
+The circuit breaker opens after three retryable provider failures and closes after the cooldown. Unsupported operations fall through without damaging provider health. Authentication and validation failures do not fail over because another provider cannot correct the request.
+
+OpenAI image edits and video creation use multipart form requests. Incoming multipart bodies can be forwarded without decoding; JSON callers can supply `image_b64` or `input_reference_b64` fields.
+
+## Data handling
+
+SQLite stores call metadata and audit reports. Raw prompts, responses, provider keys, and gateway keys are not stored. Upstream error text is truncated before persistence and not returned to gateway clients.
+
+Default retention caps are 100,000 call rows and 1,000 audit rows. Configure them with `LLM_GATEWAY_MAX_CALL_ROWS` and `LLM_GATEWAY_MAX_AUDIT_ROWS`.
+
+Runtime databases, WAL files, smoke directories, and generated reports are ignored by Git. They must never be committed.
+
+## Operations
+
+Use `npm ci`, not `npm install`, in CI and deployment. The Render Blueprint waits for checks to pass before deploying and uses a persistent disk for SQLite.
+
+Rotate gateway keys by temporarily placing old and new values in `LLM_GATEWAY_API_KEYS`, deploy, update clients, then remove the old value. Rotate the administrator token independently.
+
+Monitor:
+
+- `/healthz` status and latency;
+- HTTP 429/5xx rates;
+- provider circuit-open events;
+- SQLite disk use and WAL growth;
+- `/stats` error ratio and latency;
+- CI clean-install, test, and dependency-audit results.
+
+## Audit CLI
 
 ```bash
-# From the CLI
-node bin/audit.mjs                 # full 5-phase audit
-node bin/audit.mjs --quick         # health + drift only
-node bin/audit.mjs --json          # raw JSON to stdout
-
-# From HTTP
-curl https://your-gateway/audit           # last report
-curl -X POST https://your-gateway/audit/run   # run fresh
-curl https://your-gateway/audit/quick
+node bin/audit.mjs --base-url=http://127.0.0.1:10000
+node bin/audit.mjs --quick --base-url=http://127.0.0.1:10000
+node bin/audit.mjs --json --base-url=http://127.0.0.1:10000
 ```
 
-Example output:
-```
-=== llm-gateway self-audit (full) ===
-status:           VERIFIED_COMPLETE
-duration:         72ms
-files inventoried:10
-findings:         P0=0  P1=16  P2=26
-verified fixes:   4   unverified: 0
-```
-
-The auditor catches its own bugs. If you write a "fix" in the changelog and
-the symbol isn't in the source, the audit will report it as `unverified`.
-
----
-
-## Provider chain (env-driven)
-
-The default chain is built from env vars, in order:
-1. `OPENAI_API_KEY` → OpenAIProvider
-2. `A2E_API_KEY` → A2EProvider
-3. `ANTHROPIC_API_KEY` → AnthropicProvider
-4. (none) → EchoProvider (offline dev / tests)
-
-Each provider auto-fails over to the next on retriable errors (5xx, 429, network).
-Non-retriable errors (401, 403, 400) stop the chain. Circuit breaker opens
-after 3 consecutive failures and recovers after 30s.
-
----
-
-## Run locally
-
-```bash
-npm install
-node server.js
-# → llm-gateway listening on :10000
-```
-
-```bash
-node test/smoke.mjs
-# → 14/14 passed
-```
-
----
-
-## Deploy
-
-```bash
-# Render: link the repo, set start command to `node server.js`
-# Or run anywhere Node 18+ is available.
-```
-
-The gateway is stateless except for the SQLite file in `LLM_GATEWAY_DATA_DIR`.
-Mount a persistent disk if you want to survive restarts.
-
----
-
-## File map
-
-```
-llm-gateway/
-├── server.js              Express app, routes, audit endpoints
-├── lib/
-│   ├── router.js          Provider chain + circuit breaker
-│   ├── rules.js           22 static analysis rules
-│   ├── auditor.js         5-phase self-auditor
-│   ├── store.js           SQLite persistence (calls + audits)
-│   └── client.js          Drop-in GatewayClient
-├── bin/
-│   └── audit.mjs          CLI: node bin/audit.mjs
-├── test/
-│   └── smoke.mjs          14-check end-to-end smoke
-├── CHANGELOG.md           Claimed fixes the auditor verifies
-└── reports/               Audit reports (one JSON per run)
-```
-
----
-
-## Why "gateway + auditor in one"?
-
-Because that's the only way the auditor is honest. If the audit code lives
-in a separate repo, the gateway can lie about its own health. If it lives
-inside the same process and runs against the same `node_modules`, then a
-green `/audit` is real proof the build is sound.
-
-This is the principle: **the system performs its own duties within itself.**
+Without `--base-url` or `LLM_GATEWAY_SELF_URL`, runtime health is not tested and the CLI exits nonzero with `PARTIAL`.
