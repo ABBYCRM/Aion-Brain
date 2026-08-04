@@ -21,6 +21,9 @@ const env = {
   OPENAI_API_KEY_NOVALUIS: '',
   ANTHROPIC_API_KEY: '',
   A2E_API_KEY: '',
+  // v0.1.8 fail-closed startup: supply test AION keys so the server boots.
+  AION_API_KEYS: 'smoke-user-key',
+  AION_ADMIN_KEYS: 'smoke-admin-key',
 };
 const server = spawn('node', ['server.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = '';

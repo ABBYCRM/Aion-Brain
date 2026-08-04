@@ -42,3 +42,10 @@ All notable changes to this project will be documented in this file.
 - 8 new contract tests (`test/contract-aion-modules.mjs`) + 10 new AION smoke tests (`test/smoke-aion.mjs`).
 - The existing 14 smoke tests still pass (the new module is additive; the OpenAI-compatible /v1/* surface is unchanged).
 
+## 0.1.8 — fix: production defects from 0.1.7 audit
+- CORS: added `x-aion-key` to `access-control-allow-headers` so browser preflight succeeds when the AION auth header is sent.
+- Startup: fail-closed on missing `AION_API_KEYS` / `AION_ADMIN_KEYS` in production (was a soft warning, now `process.exit(1)`). Dev escape hatch `ALLOW_UNAUTHENTICATED_DEV=true` in non-production preserved.
+- AionChain: documented simulated streaming in a top-of-method NOTE; added `"streaming": "simulated"` to the `done` SSE event payload.
+- AionChain: provider selection is now name-based. `stream({ chain })` walks the requested `order` and resolves each entry via a `byName` Map; unknown providers emit `error` and continue. The previous index-based selection silently ignored requested provider names.
+- README: file map includes the AION modules; AION section notes the simulated-streaming limitation and the CORS header.
+

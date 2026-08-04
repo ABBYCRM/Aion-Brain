@@ -134,7 +134,7 @@ try {
 } finally {
   server.kill('SIGTERM');
   await wait(500);
-  if (existsSync(DATA_DIR)) {
-    try { (await import('node:fs')).rmSync(DATA_DIR, { recursive: true, force: true }); } catch {}
+  if (await (async () => { try { await (await import('node:fs/promises')).stat(DATA_DIR); return true; } catch { return false; } })()) {
+    try { await (await import('node:fs/promises')).rm(DATA_DIR, { recursive: true, force: true }); } catch {}
   }
 }
