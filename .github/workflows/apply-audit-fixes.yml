@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - agent/exhaustive-runtime-audit
+  pull_request:
+    types: [reopened]
 
 permissions:
   contents: write
