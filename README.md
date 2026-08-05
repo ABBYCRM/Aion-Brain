@@ -90,11 +90,10 @@ data: {"type":"done","streaming":"simulated","provider":"openai","model":"gpt-4o
 data: [DONE]
 ```
 
-> **Note on streaming:** as of v0.1.8 the `delta` events are *simulated* — the
-> underlying providers return the full completion, which is then chunked into
-> delta events for UI compatibility. The `done` event carries
-> `"streaming": "simulated"` so consumers can detect this. True token-level
-> streaming requires provider-level stream support (future work).
+> **Note on streaming:** as of v0.1.9 OpenAI-compatible providers (OpenAI, NVIDIA NIM, etc.)
+> use **true token streaming** via `streamChat()`. The `done` / `open` events carry
+> `"streaming": "true"`. Providers without a stream implementation (Echo, Anthropic
+> until added) still fall back to simulated chunking and report `"streaming": "simulated"`.
 
 ### Per-request credentials
 

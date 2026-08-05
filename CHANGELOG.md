@@ -49,12 +49,25 @@ All notable changes to this project will be documented in this file.
 - AionChain: provider selection is now name-based. `stream({ chain })` walks the requested `order` and resolves each entry via a `byName` Map; unknown providers emit `error` and continue. The previous index-based selection silently ignored requested provider names.
 - README: file map includes the AION modules; AION section notes the simulated-streaming limitation and the CORS header.
 
-## 0.1.9 — feat: Brain default research (DuckDuckGo HTML)
-- `lib/research.js` — new module. `defaultResearch(query, opts)` fetches the public DuckDuckGo HTML endpoint (no API key), parses organic result blocks, unwraps `/l/?uddg=…` redirects, and strips HTML entities. Hard 12s timeout via `AbortSignal.timeout`. Returns up to 5 hits, never throws.
-- `parseDdgHtml`, `unwrapDdgUrl`, `stripHtml` are exported and unit-tested in isolation.
-- `lib/brain.js` — Brain constructor now defaults to `defaultResearch` (was a no-op stub). `enableResearch: false` opt-out for tests. Cleaner query: strips `P0-foo-bar:` prefixes and uses the natural-language message instead of `site:github.com` operators (DDG's HTML endpoint returns nothing for those).
-- The Brain cycle now records `research_provider: "duckduckgo-html"` (or `"custom"`) in its result. Verified with a real brain cycle: 3/12 proposals received real Stack Overflow / GitHub / MDN hits in this run; the rest returned honest `no_results`. None of them flipped `safe_to_apply` (still false without a verified local patch).
-- `test/test-research.mjs` — 11 tests: 10 offline unit + 1 live DDG smoke (accepts real hits or honest-empty markers; never throws).
-- User-Agent defaults to a real Chrome UA to reduce DDG bot-challenge likelihood; overridable via `DDG_USER_AGENT` env var.
-- All 11 + 8 + 10 + 6 + 14 = 49 tests pass; self-audit `VERIFIED_COMPLETE` (P0=0, 18 verified fixes, 0 unverified).
 
+## 0.1.9 — feat: true token streaming
+- `OpenAIProvider.streamChat()` — real SSE token stream from OpenAI-compatible endpoints (OpenAI, NVIDIA NIM, etc.).
+- `AionChain.stream()` prefers true streaming when `provider.streamChat` exists; falls back to simulated chunking for providers that lack it (Echo, Anthropic until added).
+- `done` and `open` SSE events now carry `"streaming": "true"` or `"streaming": "simulated"`.
+- SSE event contract unchanged: attempt → open → delta* → done → [DONE].
+
+## 0.1.10 — fix: provider name collision + research + safeEq
+- `OpenAIProvider` accepts optional `name` (default `openai`) so NVIDIA NIM registers as `nvidia` and does not overwrite the openai entry in AionChain's byName Map.
+- `AionChain.fromEnv` sets `name: 'nvidia'` for the NVIDIA provider.
+- `safeEq` is null-safe (non-string tokens never match; no throw).
+- `brain.js` default research is now a real keyless DuckDuckGo HTML search (no stub). Callers may supply a richer researchFn when available.
+
+## 0.1.11 — feat: full runtime layers (all six gaps)
+- `lib/vault.js` — AES-256-GCM encrypted secret store in Node; hydrate env at boot; admin rotate/reveal/delete.
+- `lib/memory.js` — durable SQLite episodic memory, facts, goals; contextPack for prompt injection.
+- `lib/state.js` — active free-energy state (energy/uncertainty/stress); decisionBias prefers DEFER when F high.
+- `lib/tools.js` — brain-owned tools: web_search (DDG), github_repo/file/search (token from vault/env).
+- `lib/lattice.js` — multi-agent lattice (researcher/critic/executor) with majority consensus + critic veto.
+- `lib/brain.js` — closed research→evidence-backed proposals with citations; memory episode logging.
+- `/api/chat` integrates tools, memory, lattice, active state into decision + SSE.
+- New routes: `/api/vault*`, `/api/memory/*`, `/api/state`, `/api/tools*`.

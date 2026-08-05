@@ -12,3 +12,5 @@ reports/
 
 # os
 .DS_Store
+data-brain-*/
+data-real-*/

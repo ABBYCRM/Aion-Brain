@@ -48,18 +48,18 @@ function check(name, cond, detail) {
 try {
   await ping();
 
-  // healthz shows v0.1.9
+  // healthz shows v0.1.11
   {
     const r = await fetch(`${BASE}/healthz`);
     const j = await r.json();
-    check('healthz v0.1.9', r.ok && j.version === '0.1.9', `version=${j.version}`);
+    check('healthz v0.1.11', r.ok && j.version === '0.1.11', `version=${j.version}`);
   }
 
   // brain status
   {
     const r = await fetch(`${BASE}/brain/status`);
     const j = await r.json();
-    check('GET /brain/status', r.ok && j.name === 'BOS-OMEGA Brain' && j.version === '0.1.9',
+    check('GET /brain/status', r.ok && j.name === 'BOS-OMEGA Brain' && j.version === '0.1.11',
       `name=${j.name} policy=${j.policy?.slice(0, 50)}...`);
   }
 
