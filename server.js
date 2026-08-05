@@ -149,14 +149,14 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.8' });
+  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.9' });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.8',
+    version: '0.1.9',
     description: 'Plug-and-play LLM gateway with self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -419,7 +419,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.8',
+    version: '0.1.9',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',
