@@ -30,6 +30,9 @@ import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecisio
 import { AionChain } from './lib/aion_chain.js';
 import { aionSettings } from './lib/aion_settings.js';
 import { ToolRegistry, TOOL_CATALOG } from './lib/brain_tools.js';
+import { runLattice } from './lib/lattice.js';
+import { ActiveState } from './lib/state.js';
+import { AgentMemory } from './lib/memory.js';
 import { mkdirSync, existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -59,6 +62,10 @@ function buildDefaultChain() {
 let router = new Router({ providers: buildDefaultChain(), breaker, store });
 const brainStartedAt = Date.now();
 const aionChain = AionChain.fromEnv({ breaker, store, appId: 'aion-brain' });
+// Long-lived per-process state (free-energy + decision bias) and durable memory
+// (episodes, facts, goals). Both feed the /api/chat pipeline.
+const activeState = new ActiveState();
+const memory = new AgentMemory(join(process.env.LLM_GATEWAY_DATA_DIR || './data', 'memory.db'));
 const brainTools = new ToolRegistry({}); // no searcher by default; AION owns web search
 
 // Validate AION settings on boot (fail-closed in production)
@@ -340,8 +347,38 @@ app.post('/api/chat', async (req, res) => {
   const history = messages.slice(0, -1).map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' }));
   const ctx = new MissionContext({ userInput: userText, history });
   const decision = resolveDecision(ctx);
-  // Build AION system prompt (placeholder; no tools yet)
-  const systemPrompt = buildSystemPrompt(decision, { toolContext: '', notesContext: '' });
+
+  // Memory pack: durable context from previous episodes + facts + goals
+  let memoryPack = null;
+  try {
+    memoryPack = memory.contextPack({ sessionId: req.id, subject: principal.subject, limit: 8 });
+  } catch { memoryPack = null; }
+
+  // Optional tool: AION owns the real web search; default no-op here.
+  const toolEvidence = null;
+
+  // Lattice: 3 roles in parallel; majority + critic veto
+  let lattice = null;
+  try {
+    lattice = await runLattice({ ctx, decision, toolEvidence, activeState, memoryPack, tools: brainTools });
+  } catch (e) {
+    lattice = { consensus: decision.state, votes: {}, rationale: `lattice_error: ${e.message}`, error: true };
+  }
+
+  // Decision bias from active state
+  const bias = activeState.decisionBias();
+  if (bias?.preferDefer && lattice.consensus === 'COMMIT') {
+    lattice = { ...lattice, consensus: 'DEFER', rationale: (lattice.rationale || '') + ' | active_state_prefer_defer' };
+  }
+
+  // Build AION system prompt (with tool + lattice + memory pack context)
+  const toolContext = toolEvidence ? JSON.stringify(toolEvidence).slice(0, 1000) : '';
+  const notesContext = (memoryPack?.notes || []).map(n => `- ${n}`).join('\n');
+  const systemPrompt = buildSystemPrompt(decision, {
+    toolContext,
+    notesContext,
+    lattice: { consensus: lattice.consensus, rationale: lattice.rationale, votes: lattice.votes },
+  });
   const fullMessages = [{ role: 'system', content: systemPrompt }, ...messages];
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -353,16 +390,47 @@ app.post('/api/chat', async (req, res) => {
   // 1) decision event
   res.write(`data: ${JSON.stringify({ type: 'decision', request_id: ctx.requestId, decision })}\n\n`);
 
-  // 2) stream
+  // 2) lattice consensus event (proves runLattice fired end-to-end)
+  res.write(`data: ${JSON.stringify({
+    type: 'lattice',
+    consensus: lattice.consensus,
+    votes: lattice.votes,
+    rationale: lattice.rationale,
+    free_energy: activeState.freeEnergy(),
+  })}\n\n`);
+
+  // 3) stream
+  let streamOk = true;
+  let streamError = null;
   try {
     for await (const evt of aionChain.stream({ messages: fullMessages, temperature, maxTokens })) {
       res.write(evt);
     }
   } catch (e) {
+    streamOk = false;
+    streamError = e.message;
     res.write(`data: ${JSON.stringify({ type: 'error', kind: 'stream_failed', message: e.message })}\n\n`);
   }
   res.write('data: [DONE]\n\n');
   res.end();
+
+  // 4) post-stream: observe + remember episode + log
+  activeState.observe({
+    state: decision.state,
+    score: decision.score,
+    error: !streamOk,
+    latencyMs: Date.now() - ctx.startedAt,
+  });
+  try {
+    memory.rememberEpisode({
+      sessionId: req.id,
+      role: 'assistant',
+      content: 'aion.chat',
+      decisionState: lattice.consensus,
+      decisionScore: decision.score,
+      meta: { request_id: ctx.requestId, principal: principal.subject, lattice: lattice.consensus, stream_error: streamError },
+    });
+  } catch { /* non-fatal */ }
   // record
   store.recordCall({
     ts: ctx.startedAt,
@@ -370,7 +438,7 @@ app.post('/api/chat', async (req, res) => {
     provider: 'aion',
     model: aionSettings.primaryModel,
     operation: 'aion.chat',
-    status: 200,
+    status: streamOk ? 200 : 500,
     latency_ms: Date.now() - ctx.startedAt,
     request_id: ctx.requestId,
   });
@@ -390,7 +458,17 @@ app.get('/api/state', (req, res) => {
     providers: aionChain.providers.map(p => p.name),
     continuity_pack: { laws: AION_CONTINUITY_PACK.core_laws, states: AION_CONTINUITY_PACK.decision_states },
     uptime_ms: Date.now() - (brainStartedAt || Date.now()),
+    active_state: activeState.snapshot(),
   });
+});
+
+// Memory read API (admin only — durable SQLite, can leak session context otherwise)
+app.get('/api/memory/episodes', (req, res) => {
+  try { aionAdmin(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const sessionId = (req.query.sessionId && String(req.query.sessionId)) || null;
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 500);
+  const eps = memory.recentEpisodes({ sessionId, limit });
+  res.json({ ok: true, episodes: eps, count: eps.length });
 });
 
 app.get('/api/tools', (req, res) => {
