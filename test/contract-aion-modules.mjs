@@ -9,6 +9,10 @@ import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecisio
 import { AionChain } from '../lib/aion_chain.js';
 import { aionSettings } from '../lib/aion_settings.js';
 
+// Live brain URL for integration tests. Set BRAIN_URL to point at a different host.
+const BRAIN = process.env.BRAIN_URL || 'http://localhost:10001';
+const BRAIN_KEY = process.env.BRAIN_KEY || 'test-brain-key';
+
 test('AION continuity pack has 7 laws + 3 decision states', () => {
   assert.equal(AION_CONTINUITY_PACK.system_name, 'AION');
   assert.equal(AION_CONTINUITY_PACK.core_laws.length, 7);
@@ -74,4 +78,57 @@ test('aionSettings is frozen-ish and exposes AION keys', () => {
   assert.ok(Array.isArray(aionSettings.apiKeys));
   assert.ok(Array.isArray(aionSettings.adminKeys));
   assert.match(aionSettings.primaryModel, /^[a-z0-9./-]+$/);
+});
+
+test('Aion-Brain exposes /api/state for AION integration', async () => {
+  const r = await fetch(`${BRAIN}/api/state`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.app, 'aion-brain');
+  assert.ok(Array.isArray(body.providers));
+  assert.equal(body.continuity_pack.laws.length, 7);
+  assert.deepEqual(body.continuity_pack.states, ['COMMIT', 'DEFER', 'REJECT']);
+});
+
+test('Aion-Brain exposes /api/tools catalog', async () => {
+  const r = await fetch(`${BRAIN}/api/tools`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  const names = body.tools.map(t => t.name);
+  assert.ok(names.includes('echo'));
+  assert.ok(names.includes('datetime'));
+  assert.ok(names.includes('free_energy'));
+});
+
+test('Aion-Brain runs tools via POST /api/tools/:name', async () => {
+  // echo
+  let r = await fetch(`${BRAIN}/api/tools/echo`, {
+    method: 'POST',
+    headers: { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'hello from aion' }),
+  });
+  assert.equal(r.status, 200);
+  let body = await r.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.evidence.text, 'hello from aion');
+  // datetime
+  r = await fetch(`${BRAIN}/api/tools/datetime`, { method: 'POST', headers: { 'X-AION-Key': BRAIN_KEY } });
+  body = await r.json();
+  assert.equal(body.ok, true);
+  assert.match(body.evidence.iso, /^\d{4}-\d{2}-\d{2}T/);
+  // unknown tool
+  r = await fetch(`${BRAIN}/api/tools/nope`, { method: 'POST', headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 404);
+});
+
+test('Aion-Brain /api/tools requires auth', async () => {
+  const r = await fetch(`${BRAIN}/api/tools`);
+  assert.equal(r.status, 401);
+});
+
+test('Aion-Brain /api/state requires auth', async () => {
+  const r = await fetch(`${BRAIN}/api/state`);
+  assert.equal(r.status, 401);
 });

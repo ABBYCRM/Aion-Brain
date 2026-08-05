@@ -71,3 +71,16 @@ All notable changes to this project will be documented in this file.
 - `lib/brain.js` — closed research→evidence-backed proposals with citations; memory episode logging.
 - `/api/chat` integrates tools, memory, lattice, active state into decision + SSE.
 - New routes: `/api/vault*`, `/api/memory/*`, `/api/state`, `/api/tools*`.
+
+## 0.1.11 — AION-facing contract surface
+- New routes for the AION integration:
+  - GET  /api/state    — primary_model, fallback_models, providers, laws, states, uptime
+  - GET  /api/tools    — catalog of kernel-level tools (echo, datetime, free_energy, web_search)
+  - POST /api/tools/:name — run a tool, return {ok, evidence}
+- New lib/brain_tools.js: ToolRegistry with deterministic + side-effect-free tools
+  for lattice demos and AION tool-injection.
+- All 3 new routes require AION_API_KEYS (auth same shape as /api/decision).
+- 5 new contract tests (37/37 tests green on this version).
+- /api/state used by AION Python backend on boot to verify the Brain it
+  will talk to is the right version with the right providers.
+
