@@ -1,17 +1,66 @@
 // test/contract-aion-modules.mjs
 // Verifies the new AION modules are importable and the kernel decision
 // shape matches the AION v2 FastAPI backend contract.
+//
+// The last 5 tests exercise live HTTP routes. They spawn their own server
+// instance in `before()` (same self-contained pattern as test/smoke*.mjs) so
+// this file is runnable standalone via `node test/contract-aion-modules.mjs`
+// with no external server required. Set BRAIN_URL / BRAIN_KEY to point the
+// HTTP tests at an already-running server instead (e.g. for manual poking).
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { before, after } from 'node:test';
+import { spawn } from 'node:child_process';
+import { setTimeout as wait } from 'node:timers/promises';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, DecisionState } from '../lib/aion_kernel.js';
 import { AionChain } from '../lib/aion_chain.js';
 import { aionSettings } from '../lib/aion_settings.js';
 
-// Live brain URL for integration tests. Set BRAIN_URL to point at a different host.
-const BRAIN = process.env.BRAIN_URL || 'http://localhost:10001';
+const EXTERNAL_BRAIN = process.env.BRAIN_URL; // if set, skip spawning our own server
+const PORT = 10001;
+const BRAIN = EXTERNAL_BRAIN || `http://localhost:${PORT}`;
 const BRAIN_KEY = process.env.BRAIN_KEY || 'test-brain-key';
+const DATA_DIR = join(process.cwd(), 'data-contract-' + Date.now());
+
+let server = null;
+let serverLog = '';
+
+before(async () => {
+  if (EXTERNAL_BRAIN) return; // caller supplied a live server; nothing to spawn
+  mkdirSync(DATA_DIR, { recursive: true });
+  const env = {
+    ...process.env,
+    PORT: String(PORT),
+    LLM_GATEWAY_DATA_DIR: DATA_DIR,
+    OPENAI_API_KEY: '',
+    AION_ECHO_ONLY: '1',
+    AION_API_KEYS: BRAIN_KEY,
+    AION_ADMIN_KEYS: 'admin-key',
+    ENVIRONMENT: 'test',
+  };
+  server = spawn('node', ['server.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  server.stdout.on('data', d => { serverLog += d.toString(); });
+  server.stderr.on('data', d => { serverLog += d.toString(); });
+
+  for (let i = 0; i < 50; i++) {
+    try {
+      const r = await fetch(`${BRAIN}/healthz`);
+      if (r.ok) return;
+    } catch { /* retry */ }
+    await wait(200);
+  }
+  throw new Error('contract test server did not start within 10s\n' + serverLog);
+});
+
+after(async () => {
+  if (EXTERNAL_BRAIN) return;
+  server?.kill('SIGTERM');
+  await wait(200);
+  try { rmSync(DATA_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+});
 
 test('AION continuity pack has 7 laws + 3 decision states', () => {
   assert.equal(AION_CONTINUITY_PACK.system_name, 'AION');
