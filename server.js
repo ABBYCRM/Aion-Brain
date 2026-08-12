@@ -348,10 +348,21 @@ app.post('/api/chat', async (req, res) => {
   const ctx = new MissionContext({ userInput: userText, history });
   const decision = resolveDecision(ctx);
 
+  // Stable per-conversation session ID. req.id is a fresh random UUID on
+  // every single request, so using it here (the old behavior) meant the
+  // durable-memory lookup below always missed — every request looked like
+  // the first message of a session that never existed before. Callers
+  // that want real cross-turn recall pass session_id (or x-aion-session-id);
+  // it survives page reloads because the frontend persists the
+  // conversation's own ID. Falls back to the per-subject key so at least
+  // same-key callers share memory instead of nothing recalling at all.
+  const sessionId = String(req.body?.session_id || req.header('x-aion-session-id') || principal.subject || req.id);
+  res.setHeader('X-AION-Session-Id', sessionId);
+
   // Memory pack: durable context from previous episodes + facts + goals
   let memoryPack = null;
   try {
-    memoryPack = memory.contextPack({ sessionId: req.id, subject: principal.subject, limit: 8 });
+    memoryPack = memory.contextPack({ sessionId, subject: principal.subject, limit: 8 });
   } catch { memoryPack = null; }
 
   // Optional tool: AION owns the real web search; default no-op here.
@@ -371,9 +382,17 @@ app.post('/api/chat', async (req, res) => {
     lattice = { ...lattice, consensus: 'DEFER', rationale: (lattice.rationale || '') + ' | active_state_prefer_defer' };
   }
 
-  // Build AION system prompt (with tool + lattice + memory pack context)
+  // Build AION system prompt (with tool + lattice + memory pack context).
+  // memoryPack.contextPack() returns { episodes, facts, goals } — episodes
+  // are this session's own prior turns (durable across requests now that
+  // sessionId is stable); facts/goals are cross-session long-term memory.
   const toolContext = toolEvidence ? JSON.stringify(toolEvidence).slice(0, 1000) : '';
-  const notesContext = (memoryPack?.notes || []).map(n => `- ${n}`).join('\n');
+  const notesLines = [
+    ...(memoryPack?.episodes || []).slice().reverse().map(e => `- [prior ${e.role}] ${e.content}`),
+    ...(memoryPack?.facts || []).map(f => `- known fact: ${f}`),
+    ...(memoryPack?.goals || []).map(g => `- active goal: ${g.title} (${Math.round((g.progress || 0) * 100)}%)`),
+  ];
+  const notesContext = notesLines.join('\n');
   const systemPrompt = buildSystemPrompt(decision, {
     toolContext,
     notesContext,
@@ -402,9 +421,19 @@ app.post('/api/chat', async (req, res) => {
   // 3) stream
   let streamOk = true;
   let streamError = null;
+  let assistantText = '';
   try {
     for await (const evt of aionChain.stream({ messages: fullMessages, temperature, maxTokens })) {
       res.write(evt);
+      // Accumulate the real reply text so the post-stream episode below
+      // remembers what was actually said, not a placeholder string.
+      const m = evt.match(/^data: (.+)$/m);
+      if (m) {
+        try {
+          const parsed = JSON.parse(m[1]);
+          if (parsed.type === 'delta' && typeof parsed.text === 'string') assistantText += parsed.text;
+        } catch { /* non-JSON or [DONE] line */ }
+      }
     }
   } catch (e) {
     streamOk = false;
@@ -422,10 +451,19 @@ app.post('/api/chat', async (req, res) => {
     latencyMs: Date.now() - ctx.startedAt,
   });
   try {
+    // Remember both sides of the turn under the stable sessionId so the
+    // next request with the same session_id actually recalls this
+    // exchange via the memoryPack build above.
     memory.rememberEpisode({
-      sessionId: req.id,
+      sessionId,
+      role: 'user',
+      content: userText,
+      meta: { request_id: ctx.requestId, principal: principal.subject },
+    });
+    memory.rememberEpisode({
+      sessionId,
       role: 'assistant',
-      content: 'aion.chat',
+      content: assistantText || (streamOk ? '' : `[stream_error: ${streamError}]`),
       decisionState: lattice.consensus,
       decisionScore: decision.score,
       meta: { request_id: ctx.requestId, principal: principal.subject, lattice: lattice.consensus, stream_error: streamError },
