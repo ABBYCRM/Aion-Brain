@@ -46,9 +46,27 @@ const store = new Store(defaultStorePath());
 const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 30_000 });
 
 // Build the default provider chain from env. Order = primary -> fallback.
+// Keep this in sync with AionChain.fromEnv() — this chain backs the
+// OpenAI-compatible /v1/* routes, that one backs /api/chat. NVIDIA and xAI
+// were previously missing here, so a deployment with only those keys set
+// silently fell through to EchoProvider and echoed requests back.
 function buildDefaultChain() {
   const chain = [];
   if (process.env.OPENAI_API_KEY) chain.push(new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY }));
+  if (process.env.NVIDIA_API_KEY) {
+    chain.push(new OpenAIProvider({
+      name: 'nvidia',
+      apiKey: process.env.NVIDIA_API_KEY,
+      baseUrl: process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1',
+    }));
+  }
+  if (process.env.XAI_API_KEY) {
+    chain.push(new OpenAIProvider({
+      name: 'xai',
+      apiKey: process.env.XAI_API_KEY,
+      baseUrl: process.env.XAI_BASE_URL || 'https://api.x.ai/v1',
+    }));
+  }
   if (process.env.A2E_API_KEY) chain.push(new A2EProvider({ apiKey: process.env.A2E_API_KEY }));
   // Always include anthropic if key set
   if (process.env.ANTHROPIC_API_KEY) chain.push(new AnthropicProvider({ apiKey: process.env.ANTHROPIC_API_KEY }));
