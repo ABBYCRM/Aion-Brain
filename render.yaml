@@ -13,6 +13,15 @@ services:
         value: "10000"
       - key: LLM_GATEWAY_DATA_DIR
         value: "/var/data/llm-gateway"
+      # Required in production (ENVIRONMENT defaults to "production") — the server
+      # fail-closes at startup (process.exit(1)) if these are unset. sync: false
+      # means Render will prompt for these values in the dashboard/blueprint flow
+      # instead of silently deploying with them empty and crash-looping.
+      # Comma-separated lists of opaque keys; see lib/aion_settings.js.
+      - key: AION_API_KEYS
+        sync: false
+      - key: AION_ADMIN_KEYS
+        sync: false
     disk:
       name: llm-gateway-data
       mountPath: /var/data/llm-gateway

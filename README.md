@@ -75,10 +75,21 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/audit/recent`           | AION admin   | Last audit report                      |
 | POST   | `/api/decision`                | AION key     | 7-law kernel decision for a prompt     |
 | POST   | `/api/chat`                   | AION key     | SSE chat with decision + attempt + open + delta + done |
+| GET    | `/api/state`                  | AION key     | primary/fallback models, providers, laws, states, uptime, active-state snapshot |
+| GET    | `/api/tools`                  | AION key     | Catalog of kernel-level tools (echo, datetime, free_energy, web_search) |
+| POST   | `/api/tools/:name`            | AION key     | Run a tool, return `{ok, evidence}`    |
+| GET    | `/api/memory/episodes`        | AION admin   | Durable episodic memory read-back (SQLite) |
 
 Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`. The CORS
 preflight response advertises `x-aion-key` in `access-control-allow-headers`
 so browser clients sending the header don't get rejected.
+
+### BOS-OMEGA Brain (self-audit → research → propose)
+
+| Method | Path                          | Auth   | Purpose                                          |
+|--------|-------------------------------|--------|---------------------------------------------------|
+| POST   | `/brain/audit-and-fix`        | none   | Run audit → research → propose cycle (`{apply?, severities?}`); `apply:true` only re-applies already-verified local patches, never writes new/hallucinated code |
+| GET    | `/brain/status`                | none   | Brain capability + policy description             |
 
 SSE event names (exact match with AION v2 backend):
 ```
@@ -157,15 +168,36 @@ after 3 consecutive failures and recovers after 30s.
 
 ## Run locally
 
+`ENVIRONMENT` defaults to `production`, and in production the server **fail-closes
+at startup** (`process.exit(1)`) unless `AION_API_KEYS` and `AION_ADMIN_KEYS`
+(comma-separated key lists) are set — see `lib/aion_settings.js`. Running
+`node server.js` with no env vars will crash immediately with
+`aion.startup.fatal: AION_API_KEYS must be configured in production`.
+
+Pick one:
+
+**Option A — real keys** (also required for `/api/*` AION routes):
 ```bash
 npm install
-node server.js
+AION_API_KEYS=dev-user-key AION_ADMIN_KEYS=dev-admin-key node server.js
 # → llm-gateway listening on :10000
 ```
 
+**Option B — no keys, unauthenticated dev mode** (`/api/*` AION routes accept
+any/no request as an admin principal; fine for local hacking, never for a
+shared or public deployment):
 ```bash
-node test/smoke.mjs
-# → 14/14 passed
+npm install
+ENVIRONMENT=development ALLOW_UNAUTHENTICATED_DEV=true node server.js
+# → llm-gateway listening on :10000
+```
+
+The OpenAI-compatible `/v1/*` surface works either way with no LLM provider
+keys set — it falls back to the offline `EchoProvider`.
+
+```bash
+npm test
+# → runs the self-contained smoke + streaming + contract suites
 ```
 
 ---
@@ -186,28 +218,38 @@ Mount a persistent disk if you want to survive restarts.
 
 ```
 llm-gateway/
-├── server.js              Express app, LLM + AION + audit routes
+├── server.js              Express app, LLM + AION + audit + brain routes
 ├── lib/
 │   ├── aion_kernel.js     7-law kernel (REALITY / CONTINUITY / FIDELITY / LATTICE / EPISTEMIC / PERPETUITY / DECISION)
 │   ├── aion_settings.js   Frozen Settings; fail-closed startup validation
 │   ├── aion_chain.js      Provider chain with name-based selection + SSE stream
 │   ├── brain.js           BOS-OMEGA Brain (audit → research → propose, propose-only)
+│   ├── brain_tools.js     ToolRegistry backing /api/tools* (echo, datetime, free_energy, web_search)
+│   ├── lattice.js         Multi-agent lattice (researcher/critic/executor), majority + critic veto
+│   ├── memory.js          Durable SQLite episodic memory, facts, goals; contextPack for prompt injection
+│   ├── state.js           Active free-energy state (energy/uncertainty/stress); decision bias
 │   ├── router.js          LLM provider chain + circuit breaker
 │   ├── rules.js           22 static analysis rules
 │   ├── auditor.js         5-phase self-auditor
 │   ├── store.js           SQLite persistence (calls + audits)
+│   ├── tools.js           Brain-owned tools (web_search, github_*) — not currently imported by server.js
+│   ├── vault.js           AES-256-GCM encrypted secret store — implemented, not yet wired to any route
 │   └── client.js          Drop-in GatewayClient
 ├── bin/
 │   └── audit.mjs          CLI: node bin/audit.mjs
 ├── test/
-│   ├── smoke.mjs          14-check base smoke
-│   ├── smoke-aion.mjs     10-check AION API smoke
-│   ├── smoke-brain.mjs    6-check Brain layer + real OpenAI
-│   ├── smoke-real.mjs     Real OpenAI smoke
-│   └── contract-aion-modules.mjs   8 unit/contract tests
+│   ├── smoke.mjs                    14-check base smoke (self-contained: spawns its own server)
+│   ├── smoke-aion.mjs               10-check AION API smoke (self-contained)
+│   ├── smoke-brain.mjs              6-check Brain layer + real OpenAI (self-contained; skips without OPENAI_API_KEY)
+│   ├── smoke-real.mjs               Real OpenAI smoke (self-contained; skips without OPENAI_API_KEY)
+│   ├── test-pipeline.mjs            /api/chat pipeline integration (self-contained; skips without OPENAI_API_KEY)
+│   ├── test-streaming.mjs           streamChat() unit tests (self-contained, no server needed)
+│   └── contract-aion-modules.mjs    13 unit/contract tests (self-contained: spawns its own server)
 ├── CHANGELOG.md           Claimed fixes the auditor verifies
 └── reports/               Audit reports (one JSON per run)
 ```
+
+`npm test` runs all seven files above in sequence.
 
 ---
 
