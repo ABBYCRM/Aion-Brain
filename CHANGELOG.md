@@ -62,25 +62,23 @@ All notable changes to this project will be documented in this file.
 - `safeEq` is null-safe (non-string tokens never match; no throw).
 - `brain.js` default research is now a real keyless DuckDuckGo HTML search (no stub). Callers may supply a richer researchFn when available.
 
-## 0.1.11 — feat: full runtime layers (all six gaps)
+## 0.1.11 — feat: full runtime layers + AION-facing contract surface
 - `lib/vault.js` — AES-256-GCM encrypted secret store in Node; hydrate env at boot; admin rotate/reveal/delete.
-- `lib/memory.js` — durable SQLite episodic memory, facts, goals; contextPack for prompt injection.
+  **Implemented but not yet wired to any route** — `server.js` does not import
+  `lib/vault.js`, so there is no `/api/vault*` surface yet. Wiring it up is
+  real new admin-auth-gated secret-reveal/rotate attack surface and is
+  planned as its own reviewed change, not bundled into this entry.
+- `lib/memory.js` — durable SQLite episodic memory, facts, goals; contextPack for prompt injection. Exposed read-only via `GET /api/memory/episodes` (admin only).
 - `lib/state.js` — active free-energy state (energy/uncertainty/stress); decisionBias prefers DEFER when F high.
-- `lib/tools.js` — brain-owned tools: web_search (DDG), github_repo/file/search (token from vault/env).
+- `lib/tools.js` — brain-owned tools: web_search (DDG), github_repo/file/search (token from vault/env). Not currently imported by `server.js` (see `lib/brain_tools.js` below for the tool registry that actually backs `/api/tools*`).
 - `lib/lattice.js` — multi-agent lattice (researcher/critic/executor) with majority consensus + critic veto.
 - `lib/brain.js` — closed research→evidence-backed proposals with citations; memory episode logging.
+- `lib/brain_tools.js` — `ToolRegistry` with deterministic + side-effect-free tools (echo, datetime, free_energy, web_search) for lattice demos and AION tool-injection; backs the `/api/tools*` routes below.
 - `/api/chat` integrates tools, memory, lattice, active state into decision + SSE.
-- New routes: `/api/vault*`, `/api/memory/*`, `/api/state`, `/api/tools*`.
-
-## 0.1.11 — AION-facing contract surface
-- New routes for the AION integration:
-  - GET  /api/state    — primary_model, fallback_models, providers, laws, states, uptime
-  - GET  /api/tools    — catalog of kernel-level tools (echo, datetime, free_energy, web_search)
-  - POST /api/tools/:name — run a tool, return {ok, evidence}
-- New lib/brain_tools.js: ToolRegistry with deterministic + side-effect-free tools
-  for lattice demos and AION tool-injection.
-- All 3 new routes require AION_API_KEYS (auth same shape as /api/decision).
-- 5 new contract tests (37/37 tests green on this version).
-- /api/state used by AION Python backend on boot to verify the Brain it
-  will talk to is the right version with the right providers.
+- New routes, all requiring `AION_API_KEYS` (auth same shape as `/api/decision`):
+  - `GET  /api/state` — primary_model, fallback_models, providers, laws, states, uptime. Used by the AION Python backend on boot to verify the Brain it will talk to is the right version with the right providers.
+  - `GET  /api/tools` — catalog of kernel-level tools (echo, datetime, free_energy, web_search)
+  - `POST /api/tools/:name` — run a tool, return `{ok, evidence}`
+  - `GET  /api/memory/episodes` — admin only
+- 5 new contract tests (`test/contract-aion-modules.mjs`); 37/37 tests green on this version.
 
