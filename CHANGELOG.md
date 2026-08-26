@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.13 — feat: NVIDIA-first LLM, ECC skill auto-router, DuckDuckGo + Reddit + Steel.dev tools
+- Primary model now `meta/llama-3.1-8b-instruct` (NVIDIA NIM). Fallbacks: `nvidia/nemotron-3-nano-30b-a3b`, `grok-4-fast-reasoning`, `gpt-4.1-mini`, `claude-3-5-haiku-latest`.
+- New `lib/skill_catalog.js` — parses the ECC Complete AI Skill Pack (286 skills) into an in-memory index. Lazy-loads full bodies on demand.
+- New `lib/skill_router.js` — uses NVIDIA `nvidia/nemotron-mini-4b-instruct` as a fast JSON reranker to pick the top-K most relevant skills for a user message. Falls back to lexical search if the reranker fails.
+- New `lib/duckduckgo.js` — DuckDuckGo HTML searcher (no API key). Wires into the kernel-level `web_search` tool so direct callers (curl, scripts) get a working search out of the box.
+- New `lib/steel_browser.js` — Steel.dev thin client. `createSession`, `getContent`, `runActions`, `fetchUrl(url)` convenience.
+- New `lib/brain_tools.js` tools: `reddit_search` (public Reddit JSON), `steel_browser`, `pick_skill`, `load_skill`. Existing `web_search` now backed by DDG.
+- New HTTP routes:
+  - `GET  /api/skills`              — full catalog (name, title, description, path)
+  - `GET  /api/skills/:name`        — full skill body
+  - `POST /api/skills/pick`         — reranker (or lexical) for a query
+  - `POST /api/skills/context`      — load N skill bodies for prompt injection
+- `/api/chat` now auto-picks skills per message and prepends their bodies to the system prompt. A new `type: "skills"` SSE event reports the source (reranker / lexical / empty), the included skill names, and the raw model output.
+- `/api/chat` also exposes `X-AION-Skills-Source` and `X-AION-Skills-Count` response headers for non-streaming clients.
+
 ## 0.1.0 — 2026-08-04
 - Initial release.
 

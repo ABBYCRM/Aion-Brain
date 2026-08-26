@@ -36,6 +36,9 @@ import { AgentMemory } from './lib/memory.js';
 import { mkdirSync, existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { buildSearcher as buildDdgSearcher } from './lib/duckduckgo.js';
+import * as skillCatalog from './lib/skill_catalog.js';
+import { pickSkills, buildSkillContext } from './lib/skill_router.js';
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
 const ROOT = process.cwd();
@@ -84,7 +87,11 @@ const aionChain = AionChain.fromEnv({ breaker, store, appId: 'aion-brain' });
 // (episodes, facts, goals). Both feed the /api/chat pipeline.
 const activeState = new ActiveState();
 const memory = new AgentMemory(join(process.env.LLM_GATEWAY_DATA_DIR || './data', 'memory.db'));
-const brainTools = new ToolRegistry({}); // no searcher by default; AION owns web search
+// Wire the kernel-level searcher (DuckDuckGo HTML) and the AionChain
+// (for the skill reranker). AION owns its own web_search; the brain
+// also exposes web_search so direct callers (curl, scripts) can use it.
+const ddgSearcher = buildDdgSearcher();
+const brainTools = new ToolRegistry({ searcher: ddgSearcher, chain: aionChain });
 
 // Validate AION settings on boot (fail-closed in production)
 try {
@@ -177,15 +184,15 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.11' });
+  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.13' });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.11',
-    description: 'Plug-and-play LLM gateway with self-auditor',
+    version: '0.1.13',
+    description: 'Plug-and-play LLM gateway with AION 7-law kernel, NVIDIA-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
     endpoints: [
@@ -200,6 +207,12 @@ app.get('/', (req, res) => {
       'GET  /audit/quick',
       'GET  /calls/recent',
       'GET  /stats',
+      'GET  /api/skills',
+      'GET  /api/skills/:name',
+      'POST /api/skills/pick',
+      'POST /api/skills/context',
+      'GET  /api/tools',
+      'POST /api/tools/:name',
     ],
   });
 });
@@ -320,6 +333,66 @@ app.get('/api/models', (req, res) => {
   });
 });
 
+// ---- Skills catalog (ECC bundle) ----
+//
+// GET /api/skills          -> { count, skills: [{name,title,description,path}] }
+// GET /api/skills/:name    -> { name, title, description, path, body, length }
+// POST /api/skills/pick    -> { skills: [...] }  (reranker or lexical fallback)
+// POST /api/skills/context -> { included, context }  (load N skill bodies)
+app.get('/api/skills', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const skills = await skillCatalog.list();
+    res.json({ count: skills.length, skills });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/skills/:name(*)', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const entry = await skillCatalog.get(req.params.name);
+    if (!entry) return res.status(404).json({ ok: false, error: 'not_found', name: req.params.name });
+    res.json({ ...entry, length: (entry.body || '').length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/skills/pick', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const query = String(req.body?.query || '').trim();
+  if (!query) return res.status(400).json({ ok: false, error: 'query_required' });
+  const k = Math.max(1, Math.min(10, Number(req.body?.k) || 3));
+  try {
+    const out = await pickSkills(query, { chain: aionChain, k });
+    res.json({
+      query,
+      k,
+      source: out.source,
+      used_reranker: out.used_reranker,
+      indices: out.indices || null,
+      raw_model_output: out.raw || null,
+      skills: out.skills.map((s) => ({ name: s.name, title: s.title, description: s.description, path: s.path })),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/skills/context', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const names = Array.isArray(req.body?.names) ? req.body.names : [];
+  if (names.length === 0) return res.status(400).json({ ok: false, error: 'names_required' });
+  try {
+    const out = await buildSkillContext(names);
+    res.json({ requested: names, included: out.included, length: out.context.length, context: out.context });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/audit/recent', (req, res) => {
   try { aionAdmin(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
   const last = store.lastAudit();
@@ -400,6 +473,22 @@ app.post('/api/chat', async (req, res) => {
     lattice = { ...lattice, consensus: 'DEFER', rationale: (lattice.rationale || '') + ' | active_state_prefer_defer' };
   }
 
+  // Auto-pick skills from the ECC pack and inject their bodies as
+  // system context. Skipped if the user passes { skills: false }.
+  // Capped at top-K (env RERANKER_TOP_K, default 3) to keep the prompt small.
+  let skillInject = null;
+  if (req.body?.skills !== false) {
+    try {
+      const picked = await pickSkills(userText, { chain: aionChain });
+      if (picked.skills.length > 0) {
+        const ctx = await buildSkillContext(picked.skills.map((s) => s.name));
+        if (ctx.context) skillInject = { ...picked, context: ctx.context, included: ctx.included };
+      } else {
+        skillInject = { ...picked, context: '', included: [] };
+      }
+    } catch { skillInject = null; }
+  }
+
   // Build AION system prompt (with tool + lattice + memory pack context).
   // memoryPack.contextPack() returns { episodes, facts, goals } — episodes
   // are this session's own prior turns (durable across requests now that
@@ -416,12 +505,22 @@ app.post('/api/chat', async (req, res) => {
     notesContext,
     lattice: { consensus: lattice.consensus, rationale: lattice.rationale, votes: lattice.votes },
   });
-  const fullMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+  // Prepend the auto-picked skills (if any) to the system prompt as
+  // additional context. Skills are guidance, not commands — the model
+  // is told to use them as context, not blindly follow.
+  const systemContent = skillInject && skillInject.context
+    ? `${systemPrompt}\n\n${skillInject.context}`
+    : systemPrompt;
+  const fullMessages = [{ role: 'system', content: systemContent }, ...messages];
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Accel-Buffering', 'no');
   res.setHeader('X-AION-Decision', decision.state);
+  if (skillInject) {
+    res.setHeader('X-AION-Skills-Source', String(skillInject.source || 'none'));
+    res.setHeader('X-AION-Skills-Count', String(skillInject.included?.length || 0));
+  }
   res.flushHeaders && res.flushHeaders();
 
   // 1) decision event
@@ -435,6 +534,18 @@ app.post('/api/chat', async (req, res) => {
     rationale: lattice.rationale,
     free_energy: activeState.freeEnergy(),
   })}\n\n`);
+
+  // 2.5) skill injection event (proves the reranker fired and what it picked)
+  if (skillInject) {
+    res.write(`data: ${JSON.stringify({
+      type: 'skills',
+      source: skillInject.source,
+      used_reranker: skillInject.used_reranker,
+      included: skillInject.included || [],
+      candidate_count: skillInject.skills?.length || 0,
+      raw_model_output: skillInject.raw || null,
+    })}\n\n`);
+  }
 
   // 3) stream
   let streamOk = true;
@@ -507,7 +618,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.11',
+    version: '0.1.13',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
     fallback_models: aionSettings.fallbackModels,
@@ -588,7 +699,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.11',
+    version: '0.1.13',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',
