@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.14 — fix: retire dead primary LLM
+- Promoted `nvidia/nemotron-3-nano-30b-a3b` to primary (was the first fallback). `meta/llama-3.1-8b-instruct` and `meta/llama-3.3-70b-instruct` both return HTTP 410 (retired) from `integrate.api.nvidia.com`. Verified 30B Nano live at the same endpoint, model now primary. Fallback chain re-ordered around a model the upstream actually serves.
+- Caught by the 2026-08-27 deployment-validator run (OPEN-1 in `/workspace/deployment-validation-report.json`).
+
 ## 0.1.13 — feat: NVIDIA-first LLM, ECC skill auto-router, DuckDuckGo + Reddit + Steel.dev tools
 - Primary model now `meta/llama-3.1-8b-instruct` (NVIDIA NIM). Fallbacks: `nvidia/nemotron-3-nano-30b-a3b`, `grok-4-fast-reasoning`, `gpt-4.1-mini`, `claude-3-5-haiku-latest`.
 - New `lib/skill_catalog.js` — parses the ECC Complete AI Skill Pack (286 skills) into an in-memory index. Lazy-loads full bodies on demand.
