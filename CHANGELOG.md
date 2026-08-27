@@ -97,3 +97,8 @@ All notable changes to this project will be documented in this file.
   - `GET  /api/memory/episodes` — admin only
 - 5 new contract tests (`test/contract-aion-modules.mjs`); 37/37 tests green on this version.
 
+
+
+## 2026-08-27 — deployment-validator forced roll-forward
+- After rollback test, app was pinned to the pre-reddit-fix deploy. This commit
+  un-pins and re-deploys the latest (reddit-fix) main with no code changes.
