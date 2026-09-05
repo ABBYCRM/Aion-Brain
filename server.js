@@ -38,6 +38,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildSearcher as buildDdgSearcher } from './lib/duckduckgo.js';
 import * as skillCatalog from './lib/skill_catalog.js';
+import { registerSQMRoutes } from './lib/sqm.js';
 import { pickSkills, buildSkillContext } from './lib/skill_router.js';
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
@@ -339,6 +340,8 @@ app.get('/api/models', (req, res) => {
 // GET /api/skills/:name    -> { name, title, description, path, body, length }
 // POST /api/skills/pick    -> { skills: [...] }  (reranker or lexical fallback)
 // POST /api/skills/context -> { included, context }  (load N skill bodies)
+registerSQMRoutes(app, aionRequire);
+
 app.get('/api/skills', async (req, res) => {
   try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
   try {

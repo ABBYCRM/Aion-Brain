@@ -8,13 +8,15 @@
     "llm-audit": "bin/audit.mjs"
   },
   "scripts": {
+    "sqm": "node bin/sqm.mjs",
+    "test:sqm": "node --test test/sqm.test.mjs test/n8n.test.mjs",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "audit": "node bin/audit.mjs",
     "audit:quick": "node bin/audit.mjs --quick",
     "audit:full": "node bin/audit.mjs --full",
     "smoke": "node test/smoke.mjs",
-    "test": "node test/test-streaming.mjs && node test/contract-aion-modules.mjs && node test/smoke.mjs && node test/smoke-aion.mjs && node test/smoke-brain.mjs && node test/smoke-real.mjs && node test/test-pipeline.mjs"
+    "test": "node --test test/sqm.test.mjs test/n8n.test.mjs && node test/test-streaming.mjs && node test/contract-aion-modules.mjs && node test/smoke.mjs && node test/smoke-aion.mjs && node test/smoke-brain.mjs && node test/smoke-real.mjs && node test/test-pipeline.mjs"
   },
   "engines": {
     "node": ">=18"
