@@ -1,0 +1,255 @@
+[
+  {
+    "name": "Programming Fundamentals",
+    "query": "programming fundamentals algorithms data structures variables functions classes debugging software engineering",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Python",
+    "query": "Python programming beginner intermediate advanced automation APIs backend scripting testing packaging",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "JavaScript and TypeScript",
+    "query": "JavaScript TypeScript frontend backend Node.js asynchronous programming DOM APIs testing",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "C and C++",
+    "query": "C C++ programming memory pointers data structures systems programming compilers debugging",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "C# and .NET",
+    "query": "C# .NET application development ASP.NET APIs desktop applications testing architecture",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Java and JVM",
+    "query": "Java JVM Spring application development APIs backend testing Gradle Maven",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Go",
+    "query": "Go Golang programming concurrency APIs command line applications backend cloud development",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Rust",
+    "query": "Rust programming ownership borrowing systems programming command line applications security",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Shell Scripting",
+    "query": "Bash PowerShell shell scripting automation command line Linux Windows administration",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Web Fundamentals",
+    "query": "HTML CSS JavaScript HTTP browser web development accessibility responsive design frontend fundamentals",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Frontend Development",
+    "query": "React Vue Angular frontend development components state management routing forms testing performance",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Backend Development",
+    "query": "backend development REST APIs GraphQL authentication authorization databases queues caching architecture",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Full-Stack Development",
+    "query": "full stack web development frontend backend database authentication deployment testing architecture",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Mobile App Development",
+    "query": "mobile application development Android iOS React Native Flutter Kotlin Swift testing deployment",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Desktop App Development",
+    "query": "desktop application development Electron .NET Qt Python cross-platform desktop applications",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Git",
+    "query": "Git version control commits branches merge rebase conflict resolution workflows advanced Git",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "GitHub",
+    "query": "GitHub repositories issues pull requests actions releases projects branch protection code review GitHub CLI",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "GitHub Actions and CI/CD",
+    "query": "GitHub Actions CI CD workflows build test deployment secrets artifacts containers automation",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Command Line",
+    "query": "command line terminal cmd PowerShell Bash Linux Windows CLI tools pipes redirects environment variables",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Windows Administration",
+    "query": "Windows administration PowerShell cmd services processes registry event viewer networking permissions troubleshooting",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Linux Administration",
+    "query": "Linux administration Bash systemd processes permissions users groups networking logs package management troubleshooting",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Networking",
+    "query": "computer networking TCP IP DNS HTTP HTTPS routing ports firewalls subnets troubleshooting network tools",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Databases",
+    "query": "SQL PostgreSQL MySQL SQLite database design queries indexes transactions normalization performance",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "NoSQL and Caching",
+    "query": "MongoDB Redis NoSQL caching document databases key value stores distributed systems",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Docker",
+    "query": "Docker containers Dockerfile docker compose images volumes networking security production deployment",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Cloud Computing",
+    "query": "cloud computing servers networking storage load balancing DNS deployment infrastructure security",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "DigitalOcean",
+    "query": "DigitalOcean Droplets App Platform managed databases Spaces networking firewalls deployment monitoring",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Infrastructure as Code",
+    "query": "Terraform infrastructure as code cloud provisioning configuration deployment state modules security",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Kubernetes",
+    "query": "Kubernetes containers pods deployments services ingress config maps secrets monitoring security",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "DevOps",
+    "query": "DevOps CI CD infrastructure observability containers deployment automation incident response reliability",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Testing and QA",
+    "query": "software testing unit integration end to end test automation QA Playwright pytest Jest testing strategy",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Playwright",
+    "query": "Playwright browser testing end to end tests fixtures selectors assertions waiting isolation reliability CI",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Cybersecurity Fundamentals",
+    "query": "cybersecurity fundamentals authentication authorization cryptography network security web security threat modeling defensive security",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Web Security",
+    "query": "web application security OWASP authentication sessions access control XSS CSRF SQL injection secure coding",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "OSINT",
+    "query": "open source intelligence OSINT research verification search engines metadata geolocation public records ethical investigation",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "OPSEC",
+    "query": "operational security OPSEC threat modeling compartmentalization metadata privacy identity protection secure communications",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Privacy and Digital Hygiene",
+    "query": "online privacy digital hygiene password managers MFA device security browser privacy metadata backups",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "APIs",
+    "query": "REST APIs GraphQL HTTP JSON authentication OAuth API design documentation testing",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Software Architecture",
+    "query": "software architecture clean architecture modular design monolith microservices event driven systems scalability",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Algorithms and Data Structures",
+    "query": "algorithms data structures complexity arrays linked lists trees graphs hash tables sorting searching dynamic programming",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Debugging",
+    "query": "software debugging logging stack traces debuggers profiling root cause analysis troubleshooting",
+    "category": "education",
+    "limit": 6
+  },
+  {
+    "name": "Observability",
+    "query": "logging monitoring metrics tracing observability application performance incident debugging",
+    "category": "education",
+    "limit": 6
+  }
+]
+
