@@ -1,31 +1,36 @@
-# n8n connection
+# n8n: useful read and write capabilities
 
-Aion now exposes `n8n_status`, `n8n_tools`, `n8n_call`, and `n8n_workflows`
-through its authenticated `/api/tools/:name` API. Claw uses `aion_n8n` to reach
-these tools. No credentials are passed in model arguments.
+All functionality lives in Aion-Brain. Claw reaches the authenticated `/api/tools/:name` API; credentials remain on Aion.
 
-Set server-only environment variables:
+- `n8n_status` / `n8n_tools`: connectivity and exact supported schemas.
+- `n8n_workflows`: public API workflow metadata (first 100, with hasMore flag).
+- `n8n_call`: workflow discovery, BOS-OMEGA execution and execution status.
+- `n8n_aura`: memory search/write, skills/vault, scheduling/cancellation and self/spawn/render status. Selected IDs are in `lib/n8n_aura.js`.
+
+These complement Claw without duplicating its web, GitHub or Composio tools. Run a write only for an operator-requested action. No workflow executes during setup or connectivity checks.
+
+## Server configuration
 
 - `N8N_MCP_URL`: defaults to `https://paisabrazil.app.n8n.cloud/mcp-server/http`.
-- `N8N_MCP_TOKEN`: the raw MCP access token, without `Bearer`, quotes or Markdown escaping.
-- `N8N_API_KEY`: optional separate public API key for workflow metadata listing.
+- `N8N_MCP_TOKEN`: raw MCP access token, without Bearer or Markdown escaping.
+- `N8N_API_KEY`: separate public API key for AURA identity/path verification.
 - `N8N_API_URL`: defaults to `https://paisabrazil.app.n8n.cloud/api/v1/`.
-- `N8N_ALLOWED_TOOLS`: comma-separated tool names; defaults to
-  `search_workflows,get_workflow_details`. Workflow execution/writes are disabled
-  unless the operator explicitly adds the exact tool name. Discover schemas first.
+- `N8N_BASE_URL`: AURA origin, defaults to `https://paisabrazil.app.n8n.cloud`.
+- `N8N_WEBHOOK_TOKEN`: optional separate webhook Bearer token.
+- `N8N_EXECUTABLE_WORKFLOW_IDS`: defaults to `eEElzMUUnW8DTt4S` (BOS-OMEGA Multi-Agent System).
 
-The MCP client handles initialization, session headers, JSON/SSE responses,
-pagination, timeouts, size limits and session cleanup. It does not retry calls
-that could already have performed an action. Structured results are preserved.
-Public API listing returns metadata for the first 100 workflows and a `hasMore`
-flag, excluding nodes and credential references.
+The local installer in VIDEO-Engine-CCFL prompts privately. DigitalOcean needs its own environment configuration.
 
-Enable instance MCP access and make the relevant workflows available in MCP in
-n8n settings. See [n8n's documentation](https://docs.n8n.io/connect/connect-to-n8n-mcp-server/).
-Only tools exposed by the actual server are available; catalog discovery does
-not execute workflows. Tests use a mock server; live token validity is checked
-after local setup by asking Claw: `Check my n8n connection through Aion-Brain`.
+## Verified live state, 2026-09-05
 
-For local Claw installation, `scripts/setup-aion-local.sh` in VIDEO-Engine-CCFL
-prompts privately and passes the tokens only to the Aion container. The hosted
-DigitalOcean deployment needs its own server environment configuration.
+The public API lists 115 workflows, including 58 active AURA wrappers. BOS-OMEGA Multi-Agent System is active, MCP-enabled and has 93 nodes. The seven inspected AURA status/memory/catalog webhooks accept POST and forward to the AURA service on Render. The adapter verifies the active workflow identity and actual webhook method before calling; it never guesses URLs or retries writes automatically. Live MCP discovery succeeded without executing a workflow.
+
+No static Execute Sub-workflow references to AURA were found across the 115 definitions. That does not exclude external HTTP callers. Three sampled wrappers had no retained executions; this does not prove all are unused.
+
+## BOS execution
+
+Use `get_workflow_details` with `workflowId: eEElzMUUnW8DTt4S` and `detailLevel: execution` first. Follow the returned trigger/input schema for `execute_workflow`, including explicit `executionMode` (manual or production). Both modes can affect real services. Check execution status before claiming completion or retrying a timed-out request.
+
+The bridge preserves structured results, redacts common credential fields, supports JSON/SSE, pagination, bounded MCP responses and session cleanup. Production writes are not executed by tests.
+
+See [n8n MCP documentation](https://docs.n8n.io/connect/connect-to-n8n-mcp-server/).

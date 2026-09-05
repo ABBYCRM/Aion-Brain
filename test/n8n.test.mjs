@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { n8nTools, n8nCall, n8nStatus, n8nWorkflows } from '../lib/n8n.js';
+import { auraCall } from '../lib/n8n_aura.js';
 
 const originalFetch=globalThis.fetch;
 const saved={...process.env};
@@ -37,9 +38,10 @@ test('tool result objects are preserved and upstream tool errors remain failures
   mockMcp();assert.equal((await n8nCall('search_workflows',{query:'example'})).result.structuredContent.found,true);
   mockMcp({toolError:true});assert.equal((await n8nCall('search_workflows',{})).ok,false);
 });
-test('execution is disabled by default before any network call; explicit allowlist enables it',async()=>{
+test('execution requires the selected workflow and explicit mode, with no automatic retry',async()=>{
   globalThis.fetch=async()=>{throw Error('must not call')};await assert.rejects(n8nCall('execute_workflow',{}),/not enabled/);
-  process.env.N8N_ALLOWED_TOOLS='execute_workflow';const calls=mockMcp();await n8nCall('execute_workflow',{workflowId:'test-only'});
+  await assert.rejects(n8nCall('execute_workflow',{workflowId:'eEElzMUUnW8DTt4S'}),/executionMode/);
+  const calls=mockMcp();await n8nCall('execute_workflow',{workflowId:'eEElzMUUnW8DTt4S',executionMode:'manual'});
   assert.equal(calls.filter(c=>c==='tools/call').length,1);
 });
 test('authentication failure excludes upstream body and unconfigured fails clearly',async()=>{
@@ -50,4 +52,23 @@ test('public API uses its separate header and exposes only workflow metadata',as
   process.env.N8N_API_KEY='fake-api-key';
   globalThis.fetch=async(url,options)=>{assert.equal(options.headers['X-N8N-API-KEY'],'fake-api-key');return Response.json({data:[{id:'1',name:'Example',active:true,nodes:[{secret:'private'}]}],nextCursor:'next'});};
   const result=await n8nWorkflows();assert.equal(result.hasMore,true);assert.ok(!JSON.stringify(result).includes('private'));
+});
+
+test('AURA verifies identity and uses actual POST with exact write payload, without forwarding API key',async()=>{
+  process.env.N8N_API_KEY='fake-api-key';let calls=0;
+  globalThis.fetch=async(url,options)=>{
+    calls++;
+    if(calls===1){assert.match(String(url),/api\/v1\/workflows\//);return Response.json({name:'AURA: memory_write',active:true,nodes:[{type:'n8n-nodes-base.webhook',parameters:{path:'aura-memory_write',httpMethod:'POST'}}]});}
+    assert.equal(String(url),'https://paisabrazil.app.n8n.cloud/webhook/aura-memory_write');
+    assert.equal(options.method,'POST');assert.equal(options.headers['X-N8N-API-KEY'],undefined);
+    assert.deepEqual(JSON.parse(options.body),{text:'test-only-memory'});
+    return Response.json({ok:true,id:'test-memory'});
+  };
+  assert.equal((await auraCall('memory_write',{text:'test-only-memory'})).ok,true);assert.equal(calls,2);
+});
+test('AURA blocks unknown or mismatched workflows before webhook execution',async()=>{
+  process.env.N8N_API_KEY='fake-api-key';let calls=0;
+  globalThis.fetch=async()=>{calls++;return Response.json({name:'Other',active:true,nodes:[]})};
+  await assert.rejects(auraCall('code_exec',{}),/Unknown/);assert.equal(calls,0);
+  await assert.rejects(auraCall('memory_write',{}),/did not match/);assert.equal(calls,1);
 });
