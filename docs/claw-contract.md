@@ -110,6 +110,8 @@ New (env-backed, fail-soft if the key is missing — **no fabricated success**):
 | `hedra_status` | `HEDRA_API_KEY` | Read-only model list; does not start a video job |
 | `resend_send` | `RESEND_API_KEY` | Side-effecting; operator-requested only |
 | `github_repo` | `GITHUB_PERSONAL_ACCESS_TOKEN` (or `GITHUB_TOKEN`) | |
+| `gdy_search` / `gdy_rag_context` / `gdy_categories` / `gdy_tools` | `GDY_API_KEY` (optional `GDY_API_KEY_ALT` on 401) | Luis GDY OSINT tool directory. Base: `GDY_API_BASE` or `GDY_BASE_URL` + `/v1` |
+| `arxiv_search` | none | Official arXiv Atom API (`export.arxiv.org`). No GDY key |
 
 `web_search` uses Tavily, then Exa, then DuckDuckGo.
 

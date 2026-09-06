@@ -232,7 +232,7 @@ llm-gateway/
 │   ├── self_state.js      Canonical SELF_STATE + epistemic tags
 │   ├── control_loop.js    Enforced 8-phase agentic cycle + anti-loop + completion gate
 │   ├── agent_runtime.js   LLM planner + tool execution for /api/claw/execute
-│   ├── external_tools.js  Env-backed Tavily/Exa/Firecrawl/ScreenshotOne/Composio/…
+│   ├── external_tools.js  Env-backed Tavily/Exa/Firecrawl/GDY/arXiv/ScreenshotOne/Composio/…
 │   ├── tool_calls.js      Native NIM tool_calls + Claw XML parser
 │   ├── brain_tools.js     ToolRegistry backing /api/tools* and the control loop
 │   ├── lattice.js         Multi-agent lattice (researcher/critic/executor), majority + critic veto
@@ -255,6 +255,7 @@ llm-gateway/
 │   ├── test-pipeline.mjs            /api/chat pipeline integration (self-contained; skips without OPENAI_API_KEY)
 │   ├── test-streaming.mjs           streamChat() unit tests (self-contained, no server needed)
 │   ├── control-loop.test.mjs        SELF_STATE loop, anti-loop, tool results, completion gate
+│   ├── external_tools.test.mjs      GDY + arXiv adapters (mocked fetch, no secrets)
 │   └── contract-aion-modules.mjs    AION + claw contract tests (self-contained: spawns its own server)
 ├── docs/
 │   └── claw-contract.md   VIDEO-Engine-CCFL execution contract

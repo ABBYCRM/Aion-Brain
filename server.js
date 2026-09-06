@@ -41,7 +41,7 @@ import * as skillCatalog from './lib/skill_catalog.js';
 import { registerSQMRoutes } from './lib/sqm.js';
 import { pickSkills, buildSkillContext } from './lib/skill_router.js';
 import { AgentRuntime } from './lib/agent_runtime.js';
-import { configuredSecrets, classifyComposioKey, envSecret } from './lib/external_tools.js';
+import { configuredSecrets, classifyComposioKey, envSecret, gdyConfigured } from './lib/external_tools.js';
 import { PHASE_ORDER } from './lib/self_state.js';
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
@@ -189,14 +189,20 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.16' });
+  res.json({
+    ok: true,
+    ts: Date.now(),
+    uptime_s: Math.round(process.uptime()),
+    version: '0.1.17',
+    secrets: { gdy: gdyConfigured() },
+  });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.16',
+    version: '0.1.17',
     description: 'Plug-and-play LLM gateway with AION 7-law kernel, NVIDIA-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -673,7 +679,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.16',
+    version: '0.1.17',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
     agent_model: aionSettings.agentModel,
@@ -721,7 +727,7 @@ app.post('/api/tools/:name', async (req, res) => {
 // the existing SSE event names so aionConsult keeps working.
 
 const CLAW_CONTRACT = Object.freeze({
-  version: '0.1.16',
+  version: '0.1.17',
   phases: PHASE_ORDER,
   endpoints: {
     execute: { method: 'POST', path: '/api/claw/execute', alias: '/api/agent/run' },
@@ -923,7 +929,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.16',
+    version: '0.1.17',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',

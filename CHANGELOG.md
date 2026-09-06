@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.17 — feat: GDY OSINT directory + public arXiv tools
+- `lib/external_tools.js` adapters: `gdySearch` / `gdyRagContext` / `gdyCategories` / `gdyTools` (Bearer `GDY_API_KEY`, one 401 retry on `GDY_API_KEY_ALT`) and `arxivSearch` (official Atom API, no GDY key).
+- `gdyApiBase()` prefers `GDY_API_BASE`, else `GDY_BASE_URL` + `/v1`. Timeout + fail-soft when unconfigured. Secrets never logged.
+- Registered on `lib/brain_tools.js` ToolRegistry so `/api/tools`, `/api/claw/tools`, `/api/claw/tools/:name`, and the SELF_STATE ACTION phase (`/api/claw/execute`) can call them.
+- `configuredSecrets()` / `/healthz` / `/api/state` expose `GDY` as a boolean only (`secrets.gdy`).
+- Unit tests in `test/external_tools.test.mjs` mock `fetch`; no real keys.
+
 ## 0.1.16 — feat: agentic SELF_STATE control loop + real tool execution
 - `lib/self_state.js` / `lib/control_loop.js` / `lib/agent_runtime.js` enforce the required cycle in code: SELF-OBSERVATION → SELF-MONITORING → INTROSPECTION → METACOGNITION → SELF-REFLECTION → METACONTROL → ACTION → TERMINATION CHECK.
 - LOOP_DETECTED after the same strategy fails ≥2 times with no new evidence; identical retries are rejected.

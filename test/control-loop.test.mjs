@@ -137,6 +137,36 @@ test('ScreenshotOne HMAC signs the canonical query; secret is never a param', ()
   assert.ok(!unsigned.query.includes('signature='));
 });
 
+test('ACTION phase records arxiv_search evidence without a GDY key', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+    <id>http://arxiv.org/abs/1234.5678</id><title>Loop Paper</title>
+    <summary>Evidence for the act phase.</summary><author><name>Tester</name></author>
+    <link href="http://arxiv.org/abs/1234.5678" rel="alternate"/>
+  </entry></feed>`, { headers: { 'content-type': 'application/atom+xml' } });
+  try {
+    const tools = new ToolRegistry();
+    const planner = async () => ({
+      type: 'tool',
+      tool: 'arxiv_search',
+      args: { query: 'osint rag', max_results: 1 },
+      strategy: 'arxiv_once',
+    });
+    const loop = new ControlLoop({ tools, planner, maxCycles: 2, budgetMs: 8_000 });
+    const result = await loop.run({
+      goal: 'find an arxiv paper',
+      acceptance: [{ id: 'paper', description: 'arxiv search ran', tool: 'arxiv_search' }],
+    });
+    const rec = result.self_state.previous_tool_results.find((r) => r.tool === 'arxiv_search');
+    assert.ok(rec && rec.ok);
+    assert.equal(rec.evidence.papers[0].title, 'Loop Paper');
+    assert.equal(result.status, 'COMPLETE');
+    assert.equal(result.verified, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('Composio key type: ak_ accepted, oak_ and ck_ fail soft', () => {
   assert.equal(classifyComposioKey('ak_projectexample').ok, true);
   assert.equal(classifyComposioKey('ak_projectexample').type, 'project');

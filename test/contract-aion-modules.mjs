@@ -149,6 +149,11 @@ test('Aion-Brain exposes /api/tools catalog', async () => {
   assert.ok(names.includes('echo'));
   assert.ok(names.includes('datetime'));
   assert.ok(names.includes('free_energy'));
+  assert.ok(names.includes('gdy_search'));
+  assert.ok(names.includes('gdy_rag_context'));
+  assert.ok(names.includes('gdy_categories'));
+  assert.ok(names.includes('gdy_tools'));
+  assert.ok(names.includes('arxiv_search'));
 });
 
 test('Aion-Brain runs tools via POST /api/tools/:name', async () => {
@@ -190,6 +195,23 @@ test('Aion-Brain /api/state advertises the control loop', async () => {
   assert.equal(body.control_loop.phases[0], 'SELF_OBSERVATION');
   assert.equal(body.control_loop.phases.at(-1), 'TERMINATION_CHECK');
   assert.equal(typeof body.agent_model, 'string');
+  assert.equal(typeof body.control_loop.tools_configured.GDY, 'boolean');
+  assert.equal(JSON.stringify(body).includes('gdy_live_'), false);
+});
+
+test('healthz and claw tools catalog expose GDY boolean and new tools', async () => {
+  const health = await fetch(`${BRAIN}/healthz`);
+  assert.equal(health.status, 200);
+  const hz = await health.json();
+  assert.equal(typeof hz.secrets.gdy, 'boolean');
+  assert.equal(JSON.stringify(hz).includes('gdy_live_'), false);
+
+  const r = await fetch(`${BRAIN}/api/claw/tools`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  const names = body.tools.map((t) => t.name);
+  assert.ok(names.includes('gdy_search'));
+  assert.ok(names.includes('arxiv_search'));
 });
 
 test('Aion-Brain /api/claw/contract and execute', async () => {
