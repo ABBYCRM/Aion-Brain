@@ -151,6 +151,7 @@ test('arxiv_search works without a GDY key and parses Atom fields', async () => 
     assert.match(seen, /export\.arxiv\.org\/api\/query/);
     assert.match(seen, /search_query=all/);
     assert.match(seen, /max_results=3/);
+    assert.match(decodeURIComponent(seen), /all:"retrieval augmented generation"/);
     return new Response(SAMPLE_ATOM, { headers: { 'content-type': 'application/atom+xml' } });
   };
   const result = await arxivSearch({ query: 'retrieval augmented generation', max_results: 3 });
