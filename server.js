@@ -40,6 +40,9 @@ import { buildSearcher as buildDdgSearcher } from './lib/duckduckgo.js';
 import * as skillCatalog from './lib/skill_catalog.js';
 import { registerSQMRoutes } from './lib/sqm.js';
 import { pickSkills, buildSkillContext } from './lib/skill_router.js';
+import { AgentRuntime } from './lib/agent_runtime.js';
+import { configuredSecrets, classifyComposioKey, envSecret } from './lib/external_tools.js';
+import { PHASE_ORDER } from './lib/self_state.js';
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
 const ROOT = process.cwd();
@@ -93,6 +96,7 @@ const memory = new AgentMemory(join(process.env.LLM_GATEWAY_DATA_DIR || './data'
 // also exposes web_search so direct callers (curl, scripts) can use it.
 const ddgSearcher = buildDdgSearcher();
 const brainTools = new ToolRegistry({ searcher: ddgSearcher, chain: aionChain });
+const agentRuntime = new AgentRuntime({ chain: aionChain, tools: brainTools });
 
 // Validate AION settings on boot (fail-closed in production)
 try {
@@ -185,14 +189,14 @@ function resolveProviders(req) {
 // ---- Health & info ----
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.15' });
+  res.json({ ok: true, ts: Date.now(), uptime_s: Math.round(process.uptime()), version: '0.1.16' });
 });
 
 app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.15',
+    version: '0.1.16',
     description: 'Plug-and-play LLM gateway with AION 7-law kernel, NVIDIA-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -214,6 +218,11 @@ app.get('/', (req, res) => {
       'POST /api/skills/context',
       'GET  /api/tools',
       'POST /api/tools/:name',
+      'POST /api/agent/run',
+      'POST /api/claw/execute',
+      'GET  /api/claw/contract',
+      'GET  /api/claw/tools',
+      'POST /api/claw/tools/:name',
     ],
   });
 });
@@ -437,6 +446,49 @@ app.post('/api/chat', async (req, res) => {
   if (userText.length > aionSettings.maxMessageChars) {
     return res.status(400).json({ ok: false, error: 'message_text_too_large', kind: 'invalid_request' });
   }
+
+  // Opt-in agentic path: same SSE names Claw already consumes (decision,
+  // delta, done) plus self_state / tool events. Default remains the
+  // single-shot consult so existing smoke tests stay stable.
+  if (req.body?.agentic === true) {
+    const sessionId = String(req.body?.session_id || req.header('x-aion-session-id') || principal.subject || req.id);
+    const ctx = new MissionContext({ userInput: userText, history: messages.slice(0, -1) });
+    const decision = resolveDecision(ctx);
+    let ran;
+    try {
+      ran = await agentRuntime.run({
+        goal: userText,
+        acceptance: Array.isArray(req.body?.acceptance) ? req.body.acceptance : [],
+        sessionId,
+        model: req.body?.model || aionSettings.agentModel,
+      });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+    const answer = answerFromAgent(ran);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-AION-Decision', decision.state);
+    res.setHeader('X-AION-Session-Id', sessionId);
+    res.flushHeaders && res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ type: 'decision', request_id: ctx.requestId, decision })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'self_state', self_state: ran.self_state, status: ran.status, verified: ran.verified })}\n\n`);
+    for (const c of ran.cycles || []) {
+      if (c.action?.kind === 'tool') {
+        res.write(`data: ${JSON.stringify({ type: 'tool_start', name: c.action.tool })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'tool_end', name: c.action.tool, ok: c.action.ok })}\n\n`);
+      }
+    }
+    res.write(`data: ${JSON.stringify({ type: 'attempt', provider: 'aion-agent', model: aionSettings.agentModel, index: 1 })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'open', provider: 'aion-agent', model: aionSettings.agentModel, streaming: 'simulated' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'delta', text: answer })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'done', streaming: 'simulated', provider: 'aion-agent', model: aionSettings.agentModel, finish_reason: ran.complete ? 'stop' : 'incomplete', verified: ran.verified })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return;
+  }
+
   // Build AION decision
   const history = messages.slice(0, -1).map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' }));
   const ctx = new MissionContext({ userInput: userText, history });
@@ -621,14 +673,20 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.15',
+    version: '0.1.16',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
+    agent_model: aionSettings.agentModel,
     fallback_models: aionSettings.fallbackModels,
     providers: aionChain.providers.map(p => p.name),
     continuity_pack: { laws: AION_CONTINUITY_PACK.core_laws, states: AION_CONTINUITY_PACK.decision_states },
     uptime_ms: Date.now() - (brainStartedAt || Date.now()),
     active_state: activeState.snapshot(),
+    control_loop: {
+      phases: PHASE_ORDER,
+      tools_configured: configuredSecrets(),
+      composio_key_type: envSecret('COMPOSIO_API_KEY') ? classifyComposioKey(envSecret('COMPOSIO_API_KEY')).type : 'missing',
+    },
   });
 });
 
@@ -655,6 +713,169 @@ app.post('/api/tools/:name', async (req, res) => {
   store.recordCall({ ts: Date.now(), app_id: 'aion-brain', provider: 'tool', model: name, operation: `tool.${name}`, status: result.ok ? 200 : 400, latency_ms: 0, request_id: req.id });
   res.status(result.ok ? 200 : 400).json({ ok: result.ok, tool: name, ...result });
 });
+
+// ---- Agentic control loop + VIDEO-Engine-CCFL claw contract ----
+// Claw (lib/claw/aion.ts) already calls /api/state, /api/chat, /api/tools/:name.
+// /api/claw/execute is the dead-loop-free path: SELF_STATE cycle + real tool
+// execution. /api/chat?agentic=true uses the same runtime and still emits
+// the existing SSE event names so aionConsult keeps working.
+
+const CLAW_CONTRACT = Object.freeze({
+  version: '0.1.16',
+  phases: PHASE_ORDER,
+  endpoints: {
+    execute: { method: 'POST', path: '/api/claw/execute', alias: '/api/agent/run' },
+    tools_catalog: { method: 'GET', path: '/api/claw/tools', alias: '/api/tools' },
+    tool_run: { method: 'POST', path: '/api/claw/tools/:name', alias: '/api/tools/:name' },
+    consult: { method: 'POST', path: '/api/chat', notes: 'Set agentic:true to run the control loop inside the existing SSE stream' },
+    state: { method: 'GET', path: '/api/state' },
+  },
+  auth: 'X-AION-Key or Authorization: Bearer (must match AION_API_KEYS)',
+  execute_body: {
+    goal: 'string (or prompt, or messages[].content)',
+    acceptance: '[{ id, description, tool? }] — COMPLETE is refused until each check has evidence_id',
+    session_id: 'optional; Claw should pass claw:<conversationId>',
+    max_cycles: '1..24, default 8',
+    stream: 'if true, SSE events: phase, tool_start, tool_end, self_state, done',
+  },
+  self_state_fields: [
+    'active_goal', 'current_plan', 'current_step', 'completed_steps', 'pending_steps',
+    'working_memory', 'relevant_long_term_memory', 'assumptions', 'known_facts',
+    'unknowns', 'uncertainties', 'current_strategy', 'alternative_strategies',
+    'available_tools', 'tool_status', 'previous_tool_results', 'errors', 'warnings',
+    'blockers', 'resource_usage', 'remaining_budget', 'progress', 'confidence',
+    'expected_outcome', 'observed_outcome',
+  ],
+  health: ['HEALTHY', 'DEGRADED', 'LOOP_DETECTED', 'BLOCKED', 'UNSTABLE'],
+  epistemic: ['KNOWN', 'INFERRED', 'ASSUMED', 'UNKNOWN', 'CONTRADICTED'],
+  completion: 'status=COMPLETE only when every acceptance check is verified by a successful tool result. Confidence is not proof.',
+  anti_loop: 'Same strategy failing ≥2 times with no new evidence → LOOP_DETECTED; identical retry is forbidden.',
+});
+
+function goalFromBody(body) {
+  if (typeof body?.goal === 'string' && body.goal.trim()) return body.goal.trim();
+  if (typeof body?.prompt === 'string' && body.prompt.trim()) return body.prompt.trim();
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
+  if (!lastUser) return '';
+  return typeof lastUser.content === 'string'
+    ? lastUser.content.trim()
+    : (Array.isArray(lastUser.content) ? lastUser.content.map((p) => p.text || '').join('\n').trim() : '');
+}
+
+function answerFromAgent(result) {
+  const responds = (result.cycles || [])
+    .map((c) => c.action)
+    .filter((a) => a && a.kind === 'respond' && a.text)
+    .map((a) => a.text);
+  if (responds.length) return responds.at(-1);
+  const tools = result.self_state?.previous_tool_results || [];
+  const lastOk = [...tools].reverse().find((t) => t.ok);
+  if (lastOk) return `Executed ${lastOk.tool} (${lastOk.id}). Status ${result.status}. Verified=${result.verified}.`;
+  return `Status ${result.status}: ${result.reason}. Verified=${result.verified}.`;
+}
+
+async function runAgentFromRequest(req, principal) {
+  const goal = goalFromBody(req.body || {});
+  if (!goal) {
+    const err = new Error('goal_required');
+    err.statusCode = 400;
+    err.public = { ok: false, error: 'goal_required' };
+    throw err;
+  }
+  const sessionId = String(req.body?.session_id || req.header('x-aion-session-id') || `claw:${principal.subject}`);
+  const acceptance = Array.isArray(req.body?.acceptance)
+    ? req.body.acceptance
+    : (Array.isArray(req.body?.checks) ? req.body.checks : []);
+  const maxCycles = Number.isFinite(req.body?.max_cycles) ? req.body.max_cycles : undefined;
+  const result = await agentRuntime.run({
+    goal,
+    acceptance,
+    sessionId,
+    maxCycles,
+    model: req.body?.model || aionSettings.agentModel,
+  });
+  return { goal, sessionId, result, answer: answerFromAgent(result) };
+}
+
+app.get('/api/claw/contract', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  res.json({ ok: true, contract: CLAW_CONTRACT });
+});
+
+app.get('/api/claw/tools', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  res.json({ ok: true, tools: brainTools.catalog(), count: brainTools.catalog().length });
+});
+
+app.post('/api/claw/tools/:name', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const name = String(req.params.name || '').trim();
+  if (!brainTools.has(name)) return res.status(404).json({ ok: false, error: `unknown_tool:${name}` });
+  const args = (req.body && typeof req.body === 'object') ? req.body : {};
+  const result = await brainTools.run(name, args);
+  store.recordCall({ ts: Date.now(), app_id: 'aion-brain', provider: 'tool', model: name, operation: `claw.tool.${name}`, status: result.ok ? 200 : 400, latency_ms: 0, request_id: req.id });
+  res.status(result.ok ? 200 : 400).json({ ok: result.ok, tool: name, ...result });
+});
+
+async function handleAgentExecute(req, res) {
+  let principal;
+  try { principal = aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  let ran;
+  try {
+    ran = await runAgentFromRequest(req, principal);
+  } catch (e) {
+    return res.status(e.statusCode || 500).json(e.public || { ok: false, error: e.message });
+  }
+  const { result, answer, sessionId } = ran;
+  store.recordCall({
+    ts: Date.now(),
+    app_id: principal.subject,
+    provider: 'aion-agent',
+    model: aionSettings.agentModel,
+    operation: 'aion.agent',
+    status: result.complete ? 200 : 202,
+    latency_ms: result.duration_ms,
+    request_id: req.id,
+  });
+  const payload = {
+    ok: true,
+    source: 'aion-brain',
+    status: result.status,
+    reason: result.reason,
+    complete: result.complete,
+    verified: result.verified,
+    answer,
+    session_id: sessionId,
+    self_state: result.self_state,
+    cycles: (result.cycles || []).map((c) => ({
+      health: c.health?.status,
+      issues: c.issues?.issues,
+      action: c.action ? { kind: c.action.kind, tool: c.action.tool, ok: c.action.ok, rejected: c.action.rejected, reason: c.action.reason } : null,
+      termination: c.termination,
+    })),
+    previous_tool_results: result.self_state?.previous_tool_results || [],
+    duration_ms: result.duration_ms,
+  };
+  const wantStream = req.body?.stream === true || (req.header('accept') || '').includes('text/event-stream');
+  if (!wantStream) return res.status(result.complete ? 200 : 202).json(payload);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('X-AION-Session-Id', sessionId);
+  res.flushHeaders && res.flushHeaders();
+  res.write(`data: ${JSON.stringify({ type: 'self_state', self_state: result.self_state })}\n\n`);
+  for (const c of result.cycles || []) {
+    res.write(`data: ${JSON.stringify({ type: 'phase', health: c.health?.status, issues: c.issues?.issues, action: c.action?.kind, tool: c.action?.tool })}\n\n`);
+  }
+  res.write(`data: ${JSON.stringify({ type: 'delta', text: answer })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'done', status: result.status, verified: result.verified, provider: 'aion-agent', model: aionSettings.agentModel })}\n\n`);
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+app.post('/api/agent/run', handleAgentExecute);
+app.post('/api/claw/execute', handleAgentExecute);
 
 // ---- Audit routes ----
 
@@ -702,7 +923,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.15',
+    version: '0.1.16',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',

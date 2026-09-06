@@ -77,6 +77,28 @@ await t('OpenAIProvider.streamChat: yields deltas in order from SSE', async () =
   assert.equal(done.usage.completion_tokens, 2);
 });
 
+await t('OpenAIProvider.streamChat: accumulates reasoning_content and tool_calls', async () => {
+  const provider = new OpenAIProvider({ apiKey: 'sk-test' });
+  const body = makeSseBody([
+    { choices: [{ delta: { reasoning_content: 'think ' }, index: 0 }] },
+    { choices: [{ delta: { reasoning_content: 'more' }, index: 0 }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', type: 'function', function: { name: 'echo', arguments: '{"t' } }] }, index: 0 }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'ext":"hi"}' } }] }, index: 0 }] },
+    { choices: [{ delta: {}, finish_reason: 'tool_calls', index: 0 }] },
+  ]);
+  const events = [];
+  for await (const ev of provider.streamChat({ payload: { model: 'm', messages: [] }, fetchImpl: fakeFetchWithSse(body) })) {
+    events.push(ev);
+  }
+  const reasoning = events.filter(e => e.type === 'reasoning').map(e => e.text).join('');
+  assert.equal(reasoning, 'think more');
+  const done = events.find(e => e.type === 'done');
+  assert.equal(done.finish_reason, 'tool_calls');
+  assert.equal(done.tool_calls[0].function.name, 'echo');
+  assert.equal(done.tool_calls[0].function.arguments, '{"text":"hi"}');
+  assert.equal(done.reasoning_content, 'think more');
+});
+
 await t('OpenAIProvider.streamChat: keeps partial line in buffer until next chunk', async () => {
   const provider = new OpenAIProvider({ apiKey: 'sk-test' });
   const fullBody = makeSseBody([

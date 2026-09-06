@@ -181,3 +181,45 @@ test('Aion-Brain /api/state requires auth', async () => {
   const r = await fetch(`${BRAIN}/api/state`);
   assert.equal(r.status, 401);
 });
+
+test('Aion-Brain /api/state advertises the control loop', async () => {
+  const r = await fetch(`${BRAIN}/api/state`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.ok(Array.isArray(body.control_loop.phases));
+  assert.equal(body.control_loop.phases[0], 'SELF_OBSERVATION');
+  assert.equal(body.control_loop.phases.at(-1), 'TERMINATION_CHECK');
+  assert.equal(typeof body.agent_model, 'string');
+});
+
+test('Aion-Brain /api/claw/contract and execute', async () => {
+  const contract = await fetch(`${BRAIN}/api/claw/contract`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(contract.status, 200);
+  const c = await contract.json();
+  assert.equal(c.ok, true);
+  assert.ok(c.contract.endpoints.execute.path.includes('/api/claw/execute'));
+
+  const r = await fetch(`${BRAIN}/api/claw/execute`, {
+    method: 'POST',
+    headers: { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      goal: 'Return the current UTC time using the datetime tool if you can; otherwise reply.',
+      acceptance: [{ id: 'dt', description: 'datetime ran', tool: 'datetime' }],
+      max_cycles: 2,
+    }),
+  });
+  assert.ok(r.status === 200 || r.status === 202);
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.source, 'aion-brain');
+  assert.ok(body.self_state);
+  assert.ok(Array.isArray(body.self_state.previous_tool_results));
+  assert.ok(['COMPLETE', 'INCOMPLETE', 'BLOCKED'].includes(body.status));
+  // Echo-only cannot invent a verified COMPLETE.
+  if (body.status === 'COMPLETE') {
+    assert.equal(body.verified, true);
+    assert.ok(body.previous_tool_results.some((t) => t.tool === 'datetime' && t.ok));
+  } else {
+    assert.equal(body.verified, false);
+  }
+});
