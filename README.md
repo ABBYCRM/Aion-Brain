@@ -78,6 +78,11 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/state`                  | AION key     | primary/fallback models, providers, laws, states, uptime, active-state snapshot |
 | GET    | `/api/tools`                  | AION key     | Catalog of kernel-level tools (echo, datetime, free_energy, web_search) |
 | POST   | `/api/tools/:name`            | AION key     | Run a tool, return `{ok, evidence}`    |
+| GET    | `/api/claw/contract`          | AION key     | VIDEO-Engine claw execution contract   |
+| POST   | `/api/claw/execute`           | AION key     | SELF_STATE control loop + real tools   |
+| POST   | `/api/agent/run`              | AION key     | Alias of `/api/claw/execute`           |
+| GET    | `/api/claw/tools`             | AION key     | Same catalog as `/api/tools`           |
+| POST   | `/api/claw/tools/:name`       | AION key     | Same runner as `/api/tools/:name`      |
 | GET    | `/api/memory/episodes`        | AION admin   | Durable episodic memory read-back (SQLite) |
 
 Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`. The CORS
@@ -224,7 +229,12 @@ llm-gateway/
 │   ├── aion_settings.js   Frozen Settings; fail-closed startup validation
 │   ├── aion_chain.js      Provider chain with name-based selection + SSE stream
 │   ├── brain.js           BOS-OMEGA Brain (audit → research → propose, propose-only)
-│   ├── brain_tools.js     ToolRegistry backing /api/tools* (echo, datetime, free_energy, web_search)
+│   ├── self_state.js      Canonical SELF_STATE + epistemic tags
+│   ├── control_loop.js    Enforced 8-phase agentic cycle + anti-loop + completion gate
+│   ├── agent_runtime.js   LLM planner + tool execution for /api/claw/execute
+│   ├── external_tools.js  Env-backed Tavily/Exa/Firecrawl/ScreenshotOne/Composio/…
+│   ├── tool_calls.js      Native NIM tool_calls + Claw XML parser
+│   ├── brain_tools.js     ToolRegistry backing /api/tools* and the control loop
 │   ├── lattice.js         Multi-agent lattice (researcher/critic/executor), majority + critic veto
 │   ├── memory.js          Durable SQLite episodic memory, facts, goals; contextPack for prompt injection
 │   ├── state.js           Active free-energy state (energy/uncertainty/stress); decision bias
@@ -244,7 +254,10 @@ llm-gateway/
 │   ├── smoke-real.mjs               Real OpenAI smoke (self-contained; skips without OPENAI_API_KEY)
 │   ├── test-pipeline.mjs            /api/chat pipeline integration (self-contained; skips without OPENAI_API_KEY)
 │   ├── test-streaming.mjs           streamChat() unit tests (self-contained, no server needed)
-│   └── contract-aion-modules.mjs    13 unit/contract tests (self-contained: spawns its own server)
+│   ├── control-loop.test.mjs        SELF_STATE loop, anti-loop, tool results, completion gate
+│   └── contract-aion-modules.mjs    AION + claw contract tests (self-contained: spawns its own server)
+├── docs/
+│   └── claw-contract.md   VIDEO-Engine-CCFL execution contract
 ├── CHANGELOG.md           Claimed fixes the auditor verifies
 └── reports/               Audit reports (one JSON per run)
 ```

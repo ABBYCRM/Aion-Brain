@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.16 — feat: agentic SELF_STATE control loop + real tool execution
+- `lib/self_state.js` / `lib/control_loop.js` / `lib/agent_runtime.js` enforce the required cycle in code: SELF-OBSERVATION → SELF-MONITORING → INTROSPECTION → METACOGNITION → SELF-REFLECTION → METACONTROL → ACTION → TERMINATION CHECK.
+- LOOP_DETECTED after the same strategy fails ≥2 times with no new evidence; identical retries are rejected.
+- Completion gate refuses `COMPLETE` unless acceptance criteria are verified by tool evidence. Assumptions stay ASSUMED; intended tool calls are not treated as done; confidence is not proof.
+- Native NIM `tool_calls` + `reasoning_content` are parsed and preserved. Claw `<tool_call>` XML is also accepted. Thinking-only turns are forced into ACTION.
+- Env-backed tools (fail-soft, no fabricated success): Tavily, Exa, Firecrawl, ScrapingBee, Scrapfly, ScreenshotOne (HMAC-SHA256 canonical query), Composio (`ak_` only; `oak_`/`ck_` typed error), E2B, Hedra status, Resend, GitHub (`GITHUB_PERSONAL_ACCESS_TOKEN`).
+- VIDEO-Engine-CCFL contract: `POST /api/claw/execute` (alias `/api/agent/run`), `GET /api/claw/contract`, `/api/claw/tools`. `/api/chat` with `agentic: true` runs the same loop. See `docs/claw-contract.md`.
+- Default models: `PRIMARY_MODEL=nvidia/nemotron-3-super-120b-a12b`, `AGENT_MODEL=nvidia/nemotron-3-ultra-550b-a55b`, fallbacks include `moonshotai/kimi-k2.6`.
+
 ## 0.1.14 — fix: retire dead primary LLM
 - Promoted `nvidia/nemotron-3-nano-30b-a3b` to primary (was the first fallback). `meta/llama-3.1-8b-instruct` and `meta/llama-3.3-70b-instruct` both return HTTP 410 (retired) from `integrate.api.nvidia.com`. Verified 30B Nano live at the same endpoint, model now primary. Fallback chain re-ordered around a model the upstream actually serves.
 - Caught by the 2026-08-27 deployment-validator run (OPEN-1 in `/workspace/deployment-validation-report.json`).
