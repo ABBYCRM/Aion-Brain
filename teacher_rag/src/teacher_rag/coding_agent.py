@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -73,7 +74,7 @@ class ExecutingCodingAgent:
                     last_tests_passed = test_state
                 elif action in {"write_file", "delete_file", "run"}:
                     last_tests_passed = False
-            except Exception as exc:
+            except (KeyError, OSError, subprocess.SubprocessError, ValueError) as exc:
                 observation = f"ERROR {type(exc).__name__}: {exc}"
                 if action in {"run_tests", "write_file", "delete_file", "run"}:
                     last_tests_passed = False
