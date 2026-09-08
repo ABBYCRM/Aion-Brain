@@ -8,15 +8,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-_SENSITIVE_ENV_MARKERS = (
-    "_API_KEY",
-    "_API_KEYS",
-    "_TOKEN",
-    "_SECRET",
-    "_PASSWORD",
-    "_CREDENTIAL",
-    "PRIVATE_KEY",
-)
 _SAFE_ENV_NAMES = {
     "PATH",
     "HOME",
@@ -30,6 +21,8 @@ _SAFE_ENV_NAMES = {
     "VIRTUAL_ENV",
     "NODE_PATH",
     "CI",
+    "TERM",
+    "NO_COLOR",
 }
 
 
@@ -47,7 +40,14 @@ class CommandResult:
 
 
 class WorkspaceExecutor:
-    """Constrained filesystem + process execution surface for a coding agent."""
+    """Filesystem-scoped agent surface with a scrubbed subprocess environment.
+
+    Path-based file operations are confined to ``root``. Child processes run
+    with ``root`` as cwd and receive only an explicit non-secret environment
+    allowlist. This prevents ordinary provider/database/auth secrets from being
+    inherited by generated code. OS-level isolation is supplied by the parent
+    container/VM; cwd alone is not treated as a security boundary.
+    """
 
     def __init__(
         self,
@@ -56,6 +56,8 @@ class WorkspaceExecutor:
         timeout: float = 60.0,
         inherit_safe_environment: bool = True,
     ) -> None:
+        if timeout <= 0:
+            raise ValueError("timeout must be positive")
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.timeout = timeout
@@ -86,18 +88,18 @@ class WorkspaceExecutor:
     def _execution_env(self) -> dict[str, str]:
         if not self.inherit_safe_environment:
             return {"PATH": os.environ.get("PATH", "")}
-        safe: dict[str, str] = {}
-        for name, value in os.environ.items():
-            upper = name.upper()
-            if any(marker in upper for marker in _SENSITIVE_ENV_MARKERS):
-                continue
-            if name in _SAFE_ENV_NAMES or not upper.startswith(("NVIDIA_", "OPENAI_", "AWS_")):
-                safe[name] = value
-        return safe
+        return {
+            name: value
+            for name, value in os.environ.items()
+            if name in _SAFE_ENV_NAMES
+        }
 
     def run(self, argv: list[str], *, timeout: float | None = None) -> CommandResult:
         if not argv or not all(isinstance(x, str) and x for x in argv):
             raise ValueError("argv must contain non-empty strings")
+        effective_timeout = self.timeout if timeout is None else timeout
+        if effective_timeout <= 0:
+            raise ValueError("timeout must be positive")
         started = time.monotonic()
         proc = subprocess.run(
             argv,
@@ -105,7 +107,7 @@ class WorkspaceExecutor:
             env=self._execution_env(),
             text=True,
             capture_output=True,
-            timeout=timeout or self.timeout,
+            timeout=effective_timeout,
             shell=False,
             check=False,
         )
@@ -143,6 +145,4 @@ def _looks_like_test_command(argv: list[str]) -> bool:
         return True
     if len(normalized) >= 3 and normalized[:2] == ["npx", "playwright"] and normalized[2] == "test":
         return True
-    if normalized[:2] in (["cargo", "test"], ["go", "test"]):
-        return True
-    return False
+    return normalized[:2] in (["cargo", "test"], ["go", "test"])
