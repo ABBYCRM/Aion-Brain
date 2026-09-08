@@ -8,28 +8,26 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-_SENSITIVE_ENV_MARKERS = (
-    "_API_KEY",
-    "_API_KEYS",
-    "_TOKEN",
-    "_SECRET",
-    "_PASSWORD",
-    "_CREDENTIAL",
-    "PRIVATE_KEY",
-)
 _SAFE_ENV_NAMES = {
     "PATH",
     "HOME",
     "USER",
+    "LOGNAME",
+    "SHELL",
     "LANG",
+    "LANGUAGE",
     "LC_ALL",
+    "TERM",
     "TMPDIR",
     "TEMP",
     "TMP",
     "PYTHONPATH",
+    "PYTHONHOME",
     "VIRTUAL_ENV",
     "NODE_PATH",
     "CI",
+    "NO_COLOR",
+    "FORCE_COLOR",
 }
 
 
@@ -86,14 +84,11 @@ class WorkspaceExecutor:
     def _execution_env(self) -> dict[str, str]:
         if not self.inherit_safe_environment:
             return {"PATH": os.environ.get("PATH", "")}
-        safe: dict[str, str] = {}
-        for name, value in os.environ.items():
-            upper = name.upper()
-            if any(marker in upper for marker in _SENSITIVE_ENV_MARKERS):
-                continue
-            if name in _SAFE_ENV_NAMES or not upper.startswith(("NVIDIA_", "OPENAI_", "AWS_")):
-                safe[name] = value
-        return safe
+        return {
+            name: os.environ[name]
+            for name in _SAFE_ENV_NAMES
+            if name in os.environ
+        }
 
     def run(self, argv: list[str], *, timeout: float | None = None) -> CommandResult:
         if not argv or not all(isinstance(x, str) and x for x in argv):
