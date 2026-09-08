@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Protocol
 
 import httpx
@@ -19,6 +20,8 @@ class TeacherModel(Protocol):
 
 class NVIDIAChatModel:
     def __init__(self, *, api_key: str, base_url: str, model: str, timeout: float = 45.0) -> None:
+        if not api_key:
+            raise ValueError("api_key is required")
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -28,7 +31,11 @@ class NVIDIAChatModel:
         with httpx.Client(timeout=self.timeout) as client:
             response = client.post(
                 f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
                 json={
                     "model": self.model,
                     "messages": [
@@ -43,9 +50,9 @@ class NVIDIAChatModel:
             payload = response.json()
         try:
             content = payload["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-            raise ValueError("teacher model returned an invalid response") from exc
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ValueError("teacher model returned an invalid response envelope") from exc
+        parsed = _parse_json_object(content)
         if not isinstance(parsed, dict):
             raise ValueError("teacher model must return a JSON object")
         return parsed
@@ -120,17 +127,20 @@ class TeacherRAG:
             chunk_size=self.settings.chunk_size,
             overlap=self.settings.chunk_overlap,
         )
-        vectors = self.embeddings.embed([chunk.text for chunk in chunks])
+        vectors = self.embeddings.embed(
+            [chunk.text for chunk in chunks],
+            input_type="passage",
+        )
         if len(vectors) != len(chunks):
             raise ValueError("embedding count does not match chunk count")
         if replace_source:
-            self.store.delete_source(document.source_id)
+            return self.store.replace_source(document.source_id, chunks, vectors)
         return self.store.upsert(chunks, vectors)
 
     def search(self, query: str, *, top_k: int | None = None):
         if not query.strip():
             raise ValueError("query must not be blank")
-        query_vectors = self.embeddings.embed([query])
+        query_vectors = self.embeddings.embed([query], input_type="query")
         if len(query_vectors) != 1:
             raise ValueError("embedding provider did not return exactly one query vector")
         return self.store.search(query_vectors[0], top_k or self.settings.top_k)
@@ -163,6 +173,19 @@ class TeacherRAG:
             citations=citations,
             context=context,
         )
+
+
+def _parse_json_object(content: object) -> object:
+    if not isinstance(content, str):
+        raise ValueError("teacher model content must be text")
+    text = content.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("teacher model returned invalid JSON") from exc
 
 
 def _string_list(value: object) -> list[str]:
