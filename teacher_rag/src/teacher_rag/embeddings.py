@@ -4,6 +4,7 @@ import hashlib
 import math
 import re
 from abc import ABC, abstractmethod
+
 import httpx
 
 
@@ -34,8 +35,12 @@ class DeterministicHashEmbeddings(Embeddings):
         return [v / norm for v in vector]
 
 
-class OpenAICompatibleEmbeddings(Embeddings):
+class NVIDIAEmbeddings(Embeddings):
+    """NVIDIA NIM embeddings client using the OpenAI-shaped `/embeddings` API."""
+
     def __init__(self, *, api_key: str, base_url: str, model: str, timeout: float = 45.0) -> None:
+        if not api_key:
+            raise ValueError("api_key is required")
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -52,5 +57,11 @@ class OpenAICompatibleEmbeddings(Embeddings):
             )
             response.raise_for_status()
             payload = response.json()
-        ordered = sorted(payload["data"], key=lambda item: item["index"])
-        return [item["embedding"] for item in ordered]
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise ValueError("NVIDIA embeddings response is missing data")
+        ordered = sorted(data, key=lambda item: item["index"])
+        vectors = [item.get("embedding") for item in ordered]
+        if len(vectors) != len(texts) or not all(isinstance(v, list) for v in vectors):
+            raise ValueError("NVIDIA embeddings response shape does not match input")
+        return vectors
