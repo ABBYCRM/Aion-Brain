@@ -24,3 +24,15 @@ def test_chunk_document_rejects_invalid_overlap():
     doc = SourceDocument(source_id="x", title="X", content="hello")
     with pytest.raises(ValueError):
         chunk_document(doc, chunk_size=10, overlap=10)
+
+
+def test_chunk_document_prefixes_title_and_source_id():
+    doc = SourceDocument(
+        source_id="fastapi",
+        title="FastAPI",
+        content="Python ASGI API framework with routing and OpenAPI generation.",
+    )
+    chunks = chunk_document(doc, chunk_size=900, overlap=120)
+    assert chunks
+    assert chunks[0].text.lower().startswith("fastapi fastapi.")
+    assert "asgi" in chunks[0].text.lower()

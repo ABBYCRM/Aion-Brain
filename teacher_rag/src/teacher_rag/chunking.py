@@ -11,20 +11,24 @@ def chunk_document(document: SourceDocument, chunk_size: int, overlap: int) -> l
     if overlap < 0 or overlap >= chunk_size:
         raise ValueError("overlap must be >= 0 and < chunk_size")
 
-    text = " ".join(document.content.split())
-    if not text:
+    # Title + source_id must be in the embedded text. Curriculum bodies
+    # often describe a library without naming it ("Python ASGI API
+    # framework..."), so hash embeddings otherwise cannot retrieve FastAPI
+    # for a FastAPI query.
+    titled = " ".join(f"{document.source_id} {document.title}. {document.content}".split())
+    if not titled:
         return []
 
     chunks: list[Chunk] = []
     start = 0
     ordinal = 0
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        if end < len(text):
-            boundary = text.rfind(" ", start, end)
+    while start < len(titled):
+        end = min(start + chunk_size, len(titled))
+        if end < len(titled):
+            boundary = titled.rfind(" ", start, end)
             if boundary > start + chunk_size // 2:
                 end = boundary
-        chunk_text = text[start:end].strip()
+        chunk_text = titled[start:end].strip()
         digest = hashlib.sha256(
             f"{document.source_id}:{ordinal}:{chunk_text}".encode()
         ).hexdigest()[:20]
@@ -38,7 +42,7 @@ def chunk_document(document: SourceDocument, chunk_size: int, overlap: int) -> l
             )
         )
         ordinal += 1
-        if end == len(text):
+        if end == len(titled):
             break
         start = max(end - overlap, start + 1)
     return chunks
