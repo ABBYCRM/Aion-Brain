@@ -8,6 +8,30 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+_SENSITIVE_ENV_MARKERS = (
+    "_API_KEY",
+    "_API_KEYS",
+    "_TOKEN",
+    "_SECRET",
+    "_PASSWORD",
+    "_CREDENTIAL",
+    "PRIVATE_KEY",
+)
+_SAFE_ENV_NAMES = {
+    "PATH",
+    "HOME",
+    "USER",
+    "LANG",
+    "LC_ALL",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "PYTHONPATH",
+    "VIRTUAL_ENV",
+    "NODE_PATH",
+    "CI",
+}
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -25,10 +49,17 @@ class CommandResult:
 class WorkspaceExecutor:
     """Constrained filesystem + process execution surface for a coding agent."""
 
-    def __init__(self, root: str | Path, *, timeout: float = 60.0) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        timeout: float = 60.0,
+        inherit_safe_environment: bool = True,
+    ) -> None:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.timeout = timeout
+        self.inherit_safe_environment = inherit_safe_environment
 
     def _path(self, relative: str | Path) -> Path:
         candidate = (self.root / relative).resolve()
@@ -52,6 +83,18 @@ class WorkspaceExecutor:
         if target.is_file():
             target.unlink()
 
+    def _execution_env(self) -> dict[str, str]:
+        if not self.inherit_safe_environment:
+            return {"PATH": os.environ.get("PATH", "")}
+        safe: dict[str, str] = {}
+        for name, value in os.environ.items():
+            upper = name.upper()
+            if any(marker in upper for marker in _SENSITIVE_ENV_MARKERS):
+                continue
+            if name in _SAFE_ENV_NAMES or not upper.startswith(("NVIDIA_", "OPENAI_", "AWS_")):
+                safe[name] = value
+        return safe
+
     def run(self, argv: list[str], *, timeout: float | None = None) -> CommandResult:
         if not argv or not all(isinstance(x, str) and x for x in argv):
             raise ValueError("argv must contain non-empty strings")
@@ -59,7 +102,7 @@ class WorkspaceExecutor:
         proc = subprocess.run(
             argv,
             cwd=self.root,
-            env=os.environ.copy(),
+            env=self._execution_env(),
             text=True,
             capture_output=True,
             timeout=timeout or self.timeout,
@@ -72,7 +115,10 @@ class WorkspaceExecutor:
         return self.run([sys.executable, "-c", code])
 
     def run_tests(self, argv: list[str] | None = None) -> CommandResult:
-        return self.run(argv or [sys.executable, "-m", "pytest", "-q"])
+        command = argv or [sys.executable, "-m", "pytest", "-q"]
+        if not _looks_like_test_command(command):
+            raise ValueError("run_tests requires a recognized test command")
+        return self.run(command)
 
 
 class TemporaryWorkspace(WorkspaceExecutor):
@@ -82,3 +128,21 @@ class TemporaryWorkspace(WorkspaceExecutor):
 
     def close(self) -> None:
         self._tempdir.cleanup()
+
+
+def _looks_like_test_command(argv: list[str]) -> bool:
+    normalized = [part.lower() for part in argv]
+    joined = " ".join(normalized)
+    if "pytest" in normalized or "pytest" in joined:
+        return True
+    if normalized[:2] == ["node", "--test"]:
+        return True
+    if normalized[:2] == ["npm", "test"]:
+        return True
+    if len(normalized) >= 3 and normalized[:2] == ["npm", "run"] and normalized[2].startswith("test"):
+        return True
+    if len(normalized) >= 3 and normalized[:2] == ["npx", "playwright"] and normalized[2] == "test":
+        return True
+    if normalized[:2] in (["cargo", "test"], ["go", "test"]):
+        return True
+    return False
