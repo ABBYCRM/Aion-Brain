@@ -20,7 +20,9 @@ test('agent extension catalog replaces legacy Firecrawl scrape and exposes Teach
   const tools = extendAgentTools(baseTools);
   const names = tools.catalog().map(tool => tool.name);
   assert.equal(names.filter(name => name === 'firecrawl_scrape').length, 1);
+  assert.ok(names.includes('teacher_rag_prepare'));
   assert.ok(names.includes('teacher_rag_teach'));
+  assert.ok(names.includes('teacher_rag_build'));
   assert.ok(names.includes('firecrawl_interact'));
   assert.ok(names.includes('firecrawl_stop'));
 });
@@ -28,7 +30,9 @@ test('agent extension catalog replaces legacy Firecrawl scrape and exposes Teach
 test('AgentRuntime uses the extended tool registry', () => {
   const runtime = new AgentRuntime({ tools: baseTools, chain: null });
   const names = runtime.tools.catalog().map(tool => tool.name);
+  assert.ok(names.includes('teacher_rag_prepare'));
   assert.ok(names.includes('teacher_rag_teach'));
+  assert.ok(names.includes('teacher_rag_build'));
   assert.ok(names.includes('firecrawl_interact'));
 });
 
