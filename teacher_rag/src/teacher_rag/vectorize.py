@@ -1,22 +1,69 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .models import SourceDocument
 
 _TEXT_SUFFIXES = {
-    ".py", ".pyi", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".json",
-    ".md", ".mdx", ".txt", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
-    ".sh", ".bash", ".zsh", ".css", ".scss", ".html", ".htm", ".sql", ".graphql",
-    ".gql", ".xml", ".csv",
+    ".py",
+    ".pyi",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".json",
+    ".md",
+    ".mdx",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".css",
+    ".scss",
+    ".html",
+    ".htm",
+    ".sql",
+    ".graphql",
+    ".gql",
+    ".xml",
+    ".csv",
 }
 _SKIP_DIRS = {
-    ".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache",
-    "dist", "build", ".next", "coverage", ".teacher_rag",
+    ".git",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    ".teacher_rag",
 }
 _SECRET_FILENAMES = {
-    ".env", ".env.local", ".env.production", ".env.development", ".npmrc", ".pypirc",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    ".npmrc",
+    ".pypirc",
+    "credentials.json",
+    "service-account.json",
+    "service_account.json",
+    "secrets.json",
+    "secrets.yaml",
+    "secrets.yml",
 }
 
 
@@ -35,7 +82,7 @@ def iter_repository_documents(root: Path) -> Iterable[SourceDocument]:
             continue
         try:
             content = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except (OSError, UnicodeDecodeError):
             continue
         if not content.strip():
             continue
