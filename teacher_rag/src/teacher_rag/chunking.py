@@ -26,7 +26,7 @@ def chunk_document(document: SourceDocument, chunk_size: int, overlap: int) -> l
                 end = boundary
         chunk_text = text[start:end].strip()
         digest = hashlib.sha256(
-            f"{document.source_id}:{ordinal}:{chunk_text}".encode("utf-8")
+            f"{document.source_id}:{ordinal}:{chunk_text}".encode()
         ).hexdigest()[:20]
         chunks.append(
             Chunk(
