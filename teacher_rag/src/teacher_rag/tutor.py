@@ -54,7 +54,7 @@ class NVIDIAChatModel:
             raise ValueError("teacher model returned an invalid response envelope") from exc
         parsed = _parse_json_object(content)
         if not isinstance(parsed, dict):
-            raise ValueError("teacher model must return a JSON object")
+            raise TypeError("teacher model must return a JSON object")
         return parsed
 
 
@@ -177,7 +177,7 @@ class TeacherRAG:
 
 def _parse_json_object(content: object) -> object:
     if not isinstance(content, str):
-        raise ValueError("teacher model content must be text")
+        raise TypeError("teacher model content must be text")
     text = content.strip()
     fenced = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
     if fenced:
