@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.18 — fix: Ultra 401 must not BLOCK execute with 0 tools
+- `AionChain.chat` / `stream` no longer abort the NVIDIA chain on 400/401/403. Ultra is often unauthorized on this key; Super 120B and Lightning 30B still work. Walk the rest of the catalog instead of returning BLOCKED in ~50ms with zero tools.
+- Model-catalog misses (400/401/403/404/409/422/429) do not trip the provider circuit breaker.
+- Planner `llm_error` forces a real tool (web_search for rag/public-records goals) instead of a BLOCKED halt.
+- `heliconeHeaders()` only attaches Helicone-Auth when `HELICONE_ENABLED` is 1/true/yes.
+- Guaranteed Super + Lightning fallbacks even if `FALLBACK_MODELS` is overridden.
+- Tests: `test/aion-chain-fallback.test.mjs` plus planner llm_error coverage in `test/agent_tool_extensions.test.mjs`.
+
 ## 0.1.17 — feat: GDY OSINT directory + public arXiv tools
 - `lib/external_tools.js` adapters: `gdySearch` / `gdyRagContext` / `gdyCategories` / `gdyTools` (Bearer `GDY_API_KEY`, one 401 retry on `GDY_API_KEY_ALT`) and `arxivSearch` (official Atom API, no GDY key).
 - `gdyApiBase()` prefers `GDY_API_BASE`, else `GDY_BASE_URL` + `/v1`. Timeout + fail-soft when unconfigured. Secrets never logged.
