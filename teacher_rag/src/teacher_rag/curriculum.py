@@ -1,6 +1,5 @@
 from .models import SourceDocument
 
-
 _CURRICULUM = [
     ("pandas", "Pandas", "Data analysis with DataFrames, cleaning, joins, grouping, time series, and tabular IO. A production analysis build still needs validated inputs, tests, reproducible environments, storage, orchestration, and monitoring."),
     ("beautifulsoup", "BeautifulSoup", "HTML parsing and static-page extraction. Use it after fetching HTML; for JavaScript-heavy interaction use a browser automation layer. Production scrapers need rate limits, retries, legal/robots review, selector resilience, and tests."),
