@@ -27,12 +27,15 @@ SYSTEM = """You are an autonomous coding agent. Return JSON only.
 Choose exactly one action per turn:
 {"action":"write_file","path":"...","content":"..."}
 {"action":"read_file","path":"..."}
+{"action":"delete_file","path":"..."}
 {"action":"list_files"}
 {"action":"run","argv":["..."]}
 {"action":"run_tests","argv":["..."]}
 {"action":"finish","summary":"..."}
 Work only inside the provided workspace. Build real runnable code and verify it before finish.
-Never claim success when the latest relevant verification failed."""
+Use run_tests for verification; it only accepts recognized test-runner commands.
+Any file write, file deletion, or arbitrary run invalidates a prior passing verification.
+Never claim success when the latest relevant verification failed or became stale."""
 
 
 class ExecutingCodingAgent:
@@ -68,11 +71,11 @@ class ExecutingCodingAgent:
                 observation, test_state = self._execute(action, payload)
                 if action == "run_tests":
                     last_tests_passed = test_state
-                elif action in {"write_file", "delete_file"}:
+                elif action in {"write_file", "delete_file", "run"}:
                     last_tests_passed = False
             except Exception as exc:
                 observation = f"ERROR {type(exc).__name__}: {exc}"
-                if action == "run_tests":
+                if action in {"run_tests", "write_file", "delete_file", "run"}:
                     last_tests_passed = False
             history.append(f"ACTION {json.dumps(payload, default=str)}\nOBSERVATION {observation}")
             if action == "finish":
@@ -100,6 +103,9 @@ class ExecutingCodingAgent:
             return "file written", False
         if action == "read_file":
             return self.executor.read_file(str(payload["path"])), False
+        if action == "delete_file":
+            self.executor.delete_file(str(payload["path"]))
+            return "file deleted", False
         if action == "list_files":
             return json.dumps(self.executor.list_files()), False
         if action in {"run", "run_tests"}:
