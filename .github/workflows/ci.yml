@@ -7,8 +7,11 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  node:
     runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: test
+      SKIP_LIVE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -18,8 +21,29 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install Node dependencies
+        run: npm ci
 
-      - name: Run tests
+      - name: Run Node tests
         run: npm test
+
+  teacher-rag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: teacher_rag/pyproject.toml
+
+      - name: Install TeacherRAG
+        run: python -m pip install -e './teacher_rag[dev]'
+
+      - name: Lint TeacherRAG
+        run: ruff check teacher_rag/src teacher_rag/tests
+
+      - name: Test TeacherRAG
+        run: pytest -q teacher_rag/tests

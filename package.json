@@ -16,7 +16,7 @@
     "audit:quick": "node bin/audit.mjs --quick",
     "audit:full": "node bin/audit.mjs --full",
     "smoke": "node test/smoke.mjs",
-    "test": "node --test test/control-loop.test.mjs test/external_tools.test.mjs test/sqm.test.mjs test/n8n.test.mjs && node test/test-streaming.mjs && node test/contract-aion-modules.mjs && node test/smoke.mjs && node test/smoke-aion.mjs && node test/smoke-brain.mjs && node test/smoke-real.mjs && node test/test-pipeline.mjs"
+    "test": "node --test test/agent_tool_extensions.test.mjs test/control-loop.test.mjs test/external_tools.test.mjs test/firecrawl.test.mjs test/sqm.test.mjs test/n8n.test.mjs && node test/test-streaming.mjs && node test/contract-aion-modules.mjs && node test/smoke.mjs && node test/smoke-aion.mjs && node test/smoke-brain.mjs && node test/smoke-real.mjs && node test/test-pipeline.mjs"
   },
   "engines": {
     "node": ">=18"
