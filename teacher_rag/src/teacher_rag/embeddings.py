@@ -9,6 +9,7 @@ from typing import Literal
 import httpx
 
 EmbeddingInputType = Literal["query", "passage"]
+_KNOWN_DIMENSIONS = {"nvidia/nemotron-3-embed-1b": 2048}
 
 
 class Embeddings(ABC):
@@ -89,13 +90,42 @@ class NVIDIAEmbeddings(Embeddings):
             )
             response.raise_for_status()
             payload = response.json()
+
         data = payload.get("data")
         if not isinstance(data, list):
-            raise ValueError("NVIDIA embeddings response is missing data")
-        ordered = sorted(data, key=lambda item: item["index"])
-        vectors = [item.get("embedding") for item in ordered]
-        if len(vectors) != len(texts) or not all(isinstance(v, list) for v in vectors):
-            raise ValueError("NVIDIA embeddings response shape does not match input")
-        if vectors and not all(len(v) == len(vectors[0]) for v in vectors):
+            raise TypeError("NVIDIA embeddings response is missing data")
+        if len(data) != len(texts):
+            raise ValueError("NVIDIA embeddings response count does not match input")
+
+        ordered: list[list[float] | None] = [None] * len(texts)
+        expected_dim = _KNOWN_DIMENSIONS.get(self.model)
+        for response_index, item in enumerate(data):
+            if not isinstance(item, dict):
+                raise TypeError("NVIDIA embeddings response item must be an object")
+            index = item.get("index", response_index)
+            if not isinstance(index, int) or isinstance(index, bool):
+                raise TypeError("NVIDIA embeddings response index must be an integer")
+            if index < 0 or index >= len(texts) or ordered[index] is not None:
+                raise ValueError(f"NVIDIA embeddings response contains invalid index {index}")
+            vector = item.get("embedding")
+            if not isinstance(vector, list):
+                raise TypeError("NVIDIA embeddings response is missing an embedding vector")
+            if expected_dim is not None and len(vector) != expected_dim:
+                raise ValueError(
+                    f"NVIDIA embedding dimension mismatch: expected {expected_dim}, got {len(vector)}"
+                )
+            if not vector or not all(
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(float(value))
+                for value in vector
+            ):
+                raise ValueError("NVIDIA embedding vector contains invalid values")
+            ordered[index] = [float(value) for value in vector]
+
+        vectors = [vector for vector in ordered if vector is not None]
+        if len(vectors) != len(texts):
+            raise ValueError("NVIDIA embeddings response did not cover every input")
+        if expected_dim is None and vectors and not all(len(v) == len(vectors[0]) for v in vectors):
             raise ValueError("NVIDIA embeddings response contains inconsistent dimensions")
         return vectors
