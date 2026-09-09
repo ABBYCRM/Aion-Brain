@@ -14,13 +14,14 @@ class Settings(BaseSettings):
     chunk_overlap: int = 120
 
     nvidia_api_key: str | None = None
-    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    bitdeer_api_key: str | None = None
+    nvidia_base_url: str = "https://api-inference.bitdeer.ai/v1"
+    nvidia_model: str = "mistralai/Mistral-Large-3-675B-Instruct-2512"
 
-    # NVIDIA NIM embeddings. EMBEDDINGS_API_KEY may be a dedicated nvapi key;
-    # if omitted, TeacherRAG reuses NVIDIA_API_KEY.
+    # Bitdeer embeddings. EMBEDDINGS_API_KEY may be dedicated;
+    # if omitted, TeacherRAG reuses BITDEER_API_KEY / NVIDIA_API_KEY.
     embeddings_api_key: str | None = None
-    embeddings_base_url: str = "https://integrate.api.nvidia.com/v1"
-    embeddings_model: str = "nvidia/nemotron-3-embed-1b"
+    embeddings_base_url: str = "https://api-inference.bitdeer.ai/v1"
+    embeddings_model: str = "nvidia/Nemotron-3-Embed-1B-BF16"
 
     request_timeout_seconds: float = 45.0
