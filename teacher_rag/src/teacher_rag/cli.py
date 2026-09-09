@@ -70,7 +70,7 @@ def main() -> None:
 
     if args.command == "build":
         if not isinstance(tutor.model, NVIDIAChatModel):
-            raise SystemExit("teacher-rag build requires NVIDIA_API_KEY")
+            raise SystemExit("teacher-rag build requires BITDEER_API_KEY or NVIDIA_API_KEY")
         workspace = WorkspaceExecutor(Path(args.workspace))
         agent = ExecutingCodingAgent(
             teacher=tutor,

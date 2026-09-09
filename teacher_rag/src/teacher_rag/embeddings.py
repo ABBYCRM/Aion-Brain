@@ -9,7 +9,7 @@ from typing import Literal
 import httpx
 
 EmbeddingInputType = Literal["query", "passage"]
-_KNOWN_DIMENSIONS = {"nvidia/nemotron-3-embed-1b": 2048}
+_KNOWN_DIMENSIONS = {"nvidia/nemotron-3-embed-1b": 2048, "nvidia/Nemotron-3-Embed-1B-BF16": 2048}
 
 
 class Embeddings(ABC):

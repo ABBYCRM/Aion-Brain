@@ -101,7 +101,7 @@ class TeacherRAG:
         self.store = store or SQLiteVectorStore(self.settings.db_path)
 
     def _default_embeddings(self) -> Embeddings:
-        api_key = self.settings.embeddings_api_key or self.settings.nvidia_api_key
+        api_key = self.settings.embeddings_api_key or self.settings.bitdeer_api_key or self.settings.nvidia_api_key
         if api_key:
             return NVIDIAEmbeddings(
                 api_key=api_key,
@@ -112,9 +112,9 @@ class TeacherRAG:
         return DeterministicHashEmbeddings()
 
     def _default_model(self) -> TeacherModel:
-        if self.settings.nvidia_api_key:
+        if self.settings.bitdeer_api_key or self.settings.nvidia_api_key:
             return NVIDIAChatModel(
-                api_key=self.settings.nvidia_api_key,
+                api_key=self.settings.bitdeer_api_key or self.settings.nvidia_api_key,
                 base_url=self.settings.nvidia_base_url,
                 model=self.settings.nvidia_model,
                 timeout=self.settings.request_timeout_seconds,

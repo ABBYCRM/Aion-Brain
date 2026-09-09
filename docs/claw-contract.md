@@ -115,18 +115,20 @@ New (env-backed, fail-soft if the key is missing — **no fabricated success**):
 
 `web_search` uses Tavily, then Exa, then DuckDuckGo.
 
-`STEEL_API_KEY` already backs `steel_browser`. `NVIDIA_API_KEY` /
-`NVIDIA_API_KEYS` / `NVIDIA_BASE_URL` already back the NIM chain.
-`HELICONE_API_KEY`, when set, is attached as `Helicone-*` headers on NIM
+`STEEL_API_KEY` already backs `steel_browser`. `BITDEER_API_KEY` /
+`BITDEER_BASE_URL` (NVIDIA_* aliases still accepted) back the Bitdeer chain.
+`HELICONE_API_KEY`, when set, is attached as `Helicone-*` headers on Bitdeer
 calls; a bad Helicone key does not invent results.
 
-## NVIDIA models
+## Bitdeer models
 
 Defaults (overridable):
 
-- `PRIMARY_MODEL` = `nvidia/nemotron-3-super-120b-a12b` (confirmed on integrate.api.nvidia.com in VIDEO-Engine)
-- `AGENT_MODEL` = `nvidia/nemotron-3-ultra-550b-a55b` (stronger agentic NIM; falls back if the key cannot reach it)
-- `FALLBACK_MODELS` = `moonshotai/kimi-k2.6,nvidia/nemotron-3-super-120b-a12b,nvidia/nemotron-3-nano-30b-a3b,…`
+- `PRIMARY_MODEL` = `zai-org/GLM-5`
+- `AGENT_MODEL` = `mistralai/Mistral-Large-3-675B-Instruct-2512`
+- `FALLBACK_MODELS` = `zai-org/GLM-5,mistralai/Mistral-Large-3-675B-Instruct-2512`
+- `BITDEER_IMAGE_MODEL` = `black-forest-labs/FLUX-2-pro`
+- `BITDEER_RERANK_MODEL` = `BAAI/bge-reranker-v2-m3`
 
 The runtime preserves `reasoning_content` and `tool_calls` across turns.
 A reasoning-only turn is **not** progress; METACONTROL forces an ACTION

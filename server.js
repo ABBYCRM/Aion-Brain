@@ -60,11 +60,12 @@ const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 30_000 });
 function buildDefaultChain() {
   const chain = [];
   if (process.env.OPENAI_API_KEY) chain.push(new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY }));
-  if (process.env.NVIDIA_API_KEY) {
+  const bitdeerKey = process.env.BITDEER_API_KEYS || process.env.BITDEER_API_KEY || process.env.NVIDIA_API_KEYS || process.env.NVIDIA_API_KEY;
+  if (bitdeerKey) {
     chain.push(new OpenAIProvider({
-      name: 'nvidia',
-      apiKey: process.env.NVIDIA_API_KEY,
-      baseUrl: process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1',
+      name: 'bitdeer',
+      apiKey: bitdeerKey,
+      baseUrl: process.env.BITDEER_BASE_URL || process.env.NVIDIA_BASE_URL || 'https://api-inference.bitdeer.ai/v1',
     }));
   }
   if (process.env.XAI_API_KEY) {
@@ -203,7 +204,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'llm-gateway',
     version: '0.1.20',
-    description: 'Plug-and-play LLM gateway with AION 7-law kernel, NVIDIA-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
+    description: 'Plug-and-play LLM gateway with AION 7-law kernel, Bitdeer-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
     endpoints: [
@@ -261,9 +262,11 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 app.post('/v1/images/generations', async (req, res) => {
   const r = resolveProviders(req);
+  const payload = { ...(req.body || {}) };
+  if (!payload.model) payload.model = process.env.BITDEER_IMAGE_MODEL || 'black-forest-labs/FLUX-2-pro';
   const result = await r.call({
     operation: 'image.generate',
-    payload: req.body,
+    payload,
     appId: req.header('x-app-id'),
     requestId: req.id,
   });
