@@ -84,6 +84,12 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/claw/tools`             | AION key     | Same catalog as `/api/tools`           |
 | POST   | `/api/claw/tools/:name`       | AION key     | Same runner as `/api/tools/:name`      |
 | GET    | `/api/memory/episodes`        | AION admin   | Durable episodic memory read-back (SQLite) |
+| GET    | `/api/memory/bos?q=`          | AION key     | BOS-OMEGA Canon/Patch/Continuity retrieve |
+| POST   | `/api/agents/spawn`           | AION key     | Dynamic ephemeral subagent (goal + allowlist) |
+| GET    | `/api/agents/:id`             | AION key     | Spawned agent status |
+| GET    | `/api/agents/:id/result`      | AION key     | Spawned agent result |
+| POST   | `/api/agents/:id/steer`       | AION key     | Steer a spawned agent |
+| POST   | `/api/agents/:id/stop`        | AION key     | Stop a spawned agent |
 
 Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`. The CORS
 preflight response advertises `x-aion-key` in `access-control-allow-headers`
@@ -237,6 +243,8 @@ llm-gateway/
 │   ├── brain_tools.js     ToolRegistry backing /api/tools* and the control loop
 │   ├── lattice.js         Multi-agent lattice (researcher/critic/executor), majority + critic veto
 │   ├── memory.js          Durable SQLite episodic memory, facts, goals; contextPack for prompt injection
+│   ├── bos_omega_rag.js   BOS-OMEGA ingest/retrieve (hash embeddings + optional Pinecone)
+│   ├── agent_jobs.js      Dynamic spawn queue (SQLite + optional Inngest)
 │   ├── state.js           Active free-energy state (energy/uncertainty/stress); decision bias
 │   ├── router.js          LLM provider chain + circuit breaker
 │   ├── rules.js           22 static analysis rules

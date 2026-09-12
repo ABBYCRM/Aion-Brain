@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.21 — feat: BOS-OMEGA RAG implant + Grok-Bot dynamic spawn
+- `knowledge/bos-omega/` Canon / Patch / Continuity corpus. Implanted into Node SQLite vectors (`lib/bos_omega_rag.js`), TeacherRAG (`teacher_rag/src/teacher_rag/bos_omega.py`), and AgentMemory facts (`bos-omega` / `weldon-angelos`).
+- Retrieval-before-answer on `/api/chat` for BOS topics; `GET /api/memory/bos?q=`; tool `bos_omega_retrieve`. Hash embeddings work offline (no paid API).
+- Trinity GO/HOLD/ABORT + Grok-Bot operating rules in `buildSystemPrompt` (AION COMMIT/DEFER/REJECT unchanged).
+- Dynamic on-the-spot agent spawn (`lib/agent_jobs.js`): SQLite job queue survives restart; parallel workers; steer; stop; parent callback; optional Inngest event fan-out when `INNGEST_EVENT_KEY` is set. Not prefabricated roles.
+- HTTP: `POST /api/agents/spawn`, `GET /api/agents/:id`, `GET /api/agents/:id/result`, `POST /api/agents/:id/steer`, `POST /api/agents/:id/stop`, `POST /api/agents/:id/cleanup`.
+- Constrained `workspace_exec` (node/python3, no shell, scrubbed env). `steel_actions` for computer/browser. Optional `routine_*` templates (spawn does not require them).
+- Tests: `test/bos_omega_rag.test.mjs`, `test/agent_jobs.test.mjs`, TeacherRAG `test_bos_omega.py`, contract HTTP spawn + Trinity retrieve.
+
 ## 0.1.18 — fix: Ultra 401 must not BLOCK execute with 0 tools
 - `AionChain.chat` / `stream` no longer abort the NVIDIA chain on 400/401/403. Ultra is often unauthorized on this key; Super 120B and Lightning 30B still work. Walk the rest of the catalog instead of returning BLOCKED in ~50ms with zero tools.
 - Model-catalog misses (400/401/403/404/409/422/429) do not trip the provider circuit breaker.

@@ -3,6 +3,7 @@ from .executor import CommandResult, TemporaryWorkspace, WorkspaceExecutor
 from .models import LearnerState, SourceDocument, TeachingPacket
 from .tutor import TeacherRAG
 from .vectorize import iter_repository_documents, vectorize_repository
+from .bos_omega import seed_bos_omega
 
 __all__ = [
     "AgentRun",
@@ -16,4 +17,5 @@ __all__ = [
     "WorkspaceExecutor",
     "iter_repository_documents",
     "vectorize_repository",
+    "seed_bos_omega",
 ]

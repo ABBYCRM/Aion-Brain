@@ -154,6 +154,9 @@ test('Aion-Brain exposes /api/tools catalog', async () => {
   assert.ok(names.includes('gdy_categories'));
   assert.ok(names.includes('gdy_tools'));
   assert.ok(names.includes('arxiv_search'));
+  assert.ok(names.includes('bos_omega_retrieve'));
+  assert.ok(names.includes('spawn_agent'));
+  assert.ok(names.includes('workspace_exec'));
 });
 
 test('Aion-Brain runs tools via POST /api/tools/:name', async () => {
@@ -244,4 +247,51 @@ test('Aion-Brain /api/claw/contract and execute', async () => {
   } else {
     assert.equal(body.verified, false);
   }
+});
+
+test('BOS RAG HTTP retrieve returns Trinity chunks', async () => {
+  const r = await fetch(`${BRAIN}/api/memory/bos?q=Trinity`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  assert.ok(body.count >= 1);
+  assert.match(body.chunks.map((c) => c.text).join('\n'), /Trinity/i);
+});
+
+test('dynamic agent spawn/status/result/stop endpoints', async () => {
+  const spawn = await fetch(`${BRAIN}/api/agents/spawn`, {
+    method: 'POST',
+    headers: { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      goal: 'Return the current UTC time using datetime if you can',
+      tools: ['datetime', 'echo'],
+      acceptance: [{ id: 'dt', description: 'datetime ran', tool: 'datetime' }],
+      max_cycles: 2,
+    }),
+  });
+  assert.equal(spawn.status, 202);
+  const spawned = await spawn.json();
+  assert.equal(spawned.ok, true);
+  assert.match(spawned.job.id, /^agt_/);
+  assert.ok(['queued', 'running', 'complete', 'failed', 'stopped'].includes(spawned.job.status));
+
+  const status = await fetch(`${BRAIN}/api/agents/${spawned.job.id}`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(status.status, 200);
+  const st = await status.json();
+  assert.equal(st.job.id, spawned.job.id);
+
+  for (let i = 0; i < 40; i++) {
+    const res = await fetch(`${BRAIN}/api/agents/${spawned.job.id}/result`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+    const body = await res.json();
+    if (['complete', 'failed', 'stopped'].includes(body.job.status)) {
+      assert.equal(body.ok, true);
+      return;
+    }
+    await wait(50);
+  }
+  const stop = await fetch(`${BRAIN}/api/agents/${spawned.job.id}/stop`, {
+    method: 'POST',
+    headers: { 'X-AION-Key': BRAIN_KEY },
+  });
+  assert.ok(stop.status === 200);
 });
