@@ -21,6 +21,8 @@ const env = {
   OPENAI_API_KEY_NOVALUIS: '',
   ANTHROPIC_API_KEY: '',
   A2E_API_KEY: '',
+  AION_ECHO_ONLY: '1',
+  ENVIRONMENT: 'test',
   // v0.1.8 fail-closed startup: supply test AION keys so the server boots.
   AION_API_KEYS: 'smoke-user-key',
   AION_ADMIN_KEYS: 'smoke-admin-key',

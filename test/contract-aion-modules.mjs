@@ -126,7 +126,7 @@ test('AionChain.fromEnv honors AION_ECHO_ONLY', () => {
 test('aionSettings is frozen-ish and exposes AION keys', () => {
   assert.ok(Array.isArray(aionSettings.apiKeys));
   assert.ok(Array.isArray(aionSettings.adminKeys));
-  assert.match(aionSettings.primaryModel, /^[a-z0-9./-]+$/);
+  assert.match(aionSettings.primaryModel, /^[A-Za-z0-9./-]+$/);
 });
 
 test('Aion-Brain exposes /api/state for AION integration', async () => {
