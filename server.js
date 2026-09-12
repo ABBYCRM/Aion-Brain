@@ -50,6 +50,9 @@ import { getBosRag, seedBosFacts, isBosTopic, formatBosContext } from './lib/bos
 import { AgentOrchestrator, defaultAgentJobsPath } from './lib/agent_jobs.js';
 import { RoutineStore, runRoutine } from './lib/routines.js';
 import { connectorsSnapshot, mcpStatus } from './lib/connectors.js';
+import { bootVault } from './lib/secrets.js';
+
+bootVault();
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
 const ROOT = process.cwd();
@@ -219,7 +222,7 @@ app.get('/healthz', (req, res) => {
     ok: true,
     ts: Date.now(),
     uptime_s: Math.round(process.uptime()),
-    version: '0.1.22',
+    version: '0.1.23',
     secrets: { gdy: gdyConfigured(), cursor: cursorConfigured() },
   });
 });
@@ -228,7 +231,7 @@ app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.22',
+    version: '0.1.23',
     description: 'Plug-and-play LLM gateway with AION 7-law kernel, Bitdeer-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -792,7 +795,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.22',
+    version: '0.1.23',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
     agent_model: aionSettings.agentModel,
@@ -824,12 +827,13 @@ function serializeBosRetrieve(result, query) {
     count: result?.chunks?.length || 0,
     chunks: result?.chunks || [],
     embedder: result?.embedder || null,
+    pinecone: result?.pinecone || 'local_only',
     ingest: result?.ingest || null,
   };
 }
 
 // BOS memory: retrieve (GET) + ingest/upsert (POST). Auto-ingests if the store is empty.
-app.get('/api/memory/bos', (req, res) => {
+app.get('/api/memory/bos', async (req, res) => {
   try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
   const q = String(req.query.q || req.query.query || '').trim();
   if (!q) {
@@ -841,14 +845,14 @@ app.get('/api/memory/bos', (req, res) => {
     }
   }
   try {
-    const result = bosRag.retrieveOrIngest(q, { topK: Math.min(20, Number(req.query.topK) || 6) });
+    const result = await bosRag.retrieveOrIngestRemote(q, { topK: Math.min(20, Number(req.query.topK) || 6) });
     res.json(serializeBosRetrieve(result, q));
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.post('/api/memory/bos', (req, res) => {
+app.post('/api/memory/bos', async (req, res) => {
   try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   const upserts = [];
@@ -864,16 +868,19 @@ app.post('/api/memory/bos', (req, res) => {
       });
     }
     for (const doc of docs) {
-      upserts.push(bosRag.upsertDocument({
+      const up = bosRag.upsertDocument({
         sourceId: doc.source_id || doc.sourceId,
         title: doc.title,
         content: doc.content,
         authority: doc.authority,
-      }));
+      });
+      const { rows, ...publicUp } = up;
+      const pinecone = await bosRag.syncPineconeSource(up.source_id);
+      upserts.push({ ...publicUp, pinecone: pinecone?.ok ? pinecone.evidence : (pinecone?.skipped ? 'skipped' : (pinecone?.error || null)) });
     }
     const q = String(body.query || body.q || '').trim();
     const retrieve = q
-      ? bosRag.retrieveOrIngest(q, { topK: Math.min(20, Number(body.topK) || 6) })
+      ? await bosRag.retrieveOrIngestRemote(q, { topK: Math.min(20, Number(body.topK) || 6) })
       : null;
     res.json({
       ok: true,
@@ -997,7 +1004,7 @@ app.post('/api/tools/:name', async (req, res) => {
 // the existing SSE event names so aionConsult keeps working.
 
 const CLAW_CONTRACT = Object.freeze({
-  version: '0.1.22',
+  version: '0.1.23',
   phases: PHASE_ORDER,
   endpoints: {
     execute: { method: 'POST', path: '/api/claw/execute', alias: '/api/agent/run' },
@@ -1363,7 +1370,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.22',
+    version: '0.1.23',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',
