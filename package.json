@@ -16,7 +16,7 @@
     "audit:quick": "node bin/audit.mjs --quick",
     "audit:full": "node bin/audit.mjs --full",
     "smoke": "node test/smoke.mjs",
-    "test": "node --test test/bos_omega_rag.test.mjs test/trinity_bos_routines_mcp.test.mjs test/provider_tools.test.mjs test/agent_jobs.test.mjs test/cursor_cloud.test.mjs test/agent_tool_extensions.test.mjs test/aion-chain-fallback.test.mjs test/control-loop.test.mjs test/external_tools.test.mjs test/firecrawl.test.mjs test/sqm.test.mjs test/n8n.test.mjs && node test/test-streaming.mjs && node test/contract-aion-modules.mjs && node test/smoke.mjs && node test/smoke-aion.mjs && node test/smoke-brain.mjs && node test/smoke-real.mjs && node test/test-pipeline.mjs"
+    "test": "node --test test/bos_omega_rag.test.mjs test/trinity_bos_routines_mcp.test.mjs test/provider_tools.test.mjs test/bitdeer_primary.test.mjs test/agent_jobs.test.mjs test/cursor_cloud.test.mjs test/agent_tool_extensions.test.mjs test/aion-chain-fallback.test.mjs test/control-loop.test.mjs test/external_tools.test.mjs test/firecrawl.test.mjs test/sqm.test.mjs test/n8n.test.mjs && node test/test-streaming.mjs && node test/contract-aion-modules.mjs && node test/smoke.mjs && node test/smoke-aion.mjs && node test/smoke-brain.mjs && node test/smoke-real.mjs && node test/test-pipeline.mjs"
   },
   "engines": {
     "node": ">=18"

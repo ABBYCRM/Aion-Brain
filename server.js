@@ -20,10 +20,8 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { Store, defaultStorePath } from './lib/store.js';
-import {
-  Router, CircuitBreaker,
-  OpenAIProvider, A2EProvider, AnthropicProvider, EchoProvider,
-} from './lib/router.js';
+import { Router, CircuitBreaker } from './lib/router.js';
+import { buildDefaultChain, resolveProviders as resolveBitdeerProviders, NVIDIA_CORS_HEADERS } from './lib/nvidia_only_providers.js';
 import { Auditor } from './lib/auditor.js';
 import { Brain } from './lib/brain.js';
 import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, resolveBosGate, TrinityState } from './lib/aion_kernel.js';
@@ -62,39 +60,9 @@ if (!existsSync(REPORTS_DIR)) mkdirSync(REPORTS_DIR, { recursive: true });
 const store = new Store(defaultStorePath());
 const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 30_000 });
 
-// Build the default provider chain from env. Order = primary -> fallback.
-// Keep this in sync with AionChain.fromEnv() — this chain backs the
-// OpenAI-compatible /v1/* routes, that one backs /api/chat. NVIDIA and xAI
-// were previously missing here, so a deployment with only those keys set
-// silently fell through to EchoProvider and echoed requests back.
-function buildDefaultChain() {
-  const chain = [];
-  if (process.env.OPENAI_API_KEY) chain.push(new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY }));
-  const bitdeerKey = process.env.BITDEER_API_KEYS || process.env.BITDEER_API_KEY || process.env.NVIDIA_API_KEYS || process.env.NVIDIA_API_KEY;
-  if (bitdeerKey) {
-    chain.push(new OpenAIProvider({
-      name: 'bitdeer',
-      apiKey: bitdeerKey,
-      baseUrl: process.env.BITDEER_BASE_URL || process.env.NVIDIA_BASE_URL || 'https://api-inference.bitdeer.ai/v1',
-    }));
-  }
-  if (process.env.XAI_API_KEY) {
-    chain.push(new OpenAIProvider({
-      name: 'xai',
-      apiKey: process.env.XAI_API_KEY,
-      baseUrl: process.env.XAI_BASE_URL || 'https://api.x.ai/v1',
-    }));
-  }
-  if (process.env.A2E_API_KEY) chain.push(new A2EProvider({ apiKey: process.env.A2E_API_KEY }));
-  // Always include anthropic if key set
-  if (process.env.ANTHROPIC_API_KEY) chain.push(new AnthropicProvider({ apiKey: process.env.ANTHROPIC_API_KEY }));
-  if (chain.length === 0) {
-    // Dev fallback so the gateway still works for tests / demos
-    chain.push(new EchoProvider({ name: 'echo', latencyMs: 5 }));
-  }
-  return chain;
-}
-
+// Production inference is BITDEER-PRIMARY (fail-closed). /v1 and /api/chat
+// stay on the Bitdeer catalog. GEMINI/XAI/KIMI/OPENAI keys are optional
+// side tools via lib/provider_tools.js — they must never join this chain.
 let router = new Router({ providers: buildDefaultChain(), breaker, store });
 const brainStartedAt = Date.now();
 const aionChain = AionChain.fromEnv({ breaker, store, appId: 'aion-brain' });
@@ -194,25 +162,14 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-  res.setHeader('access-control-allow-headers', 'content-type,authorization,x-openai-key,x-anthropic-key,x-a2e-key,x-aion-key,x-app-id,x-request-id');
+  res.setHeader('access-control-allow-headers', NVIDIA_CORS_HEADERS);
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
 
-// Per-request credentials: prefer header, then env, then configured chain.
+// Per-request Bitdeer/NVIDIA key only. Non-Bitdeer provider headers are ignored.
 function resolveProviders(req) {
-  const headerKey = req.header('x-openai-key') || req.header('authorization')?.replace(/^Bearer\s+/i, '');
-  const a2eKey = req.header('x-a2e-key');
-  const anthKey = req.header('x-anthropic-key') || req.header('x-anthropic-key'.toLowerCase());
-  if (headerKey || a2eKey || anthKey) {
-    const chain = [];
-    if (headerKey) chain.push(new OpenAIProvider({ apiKey: headerKey.replace(/^Bearer\s+/i, '') }));
-    if (a2eKey) chain.push(new A2EProvider({ apiKey: a2eKey }));
-    if (anthKey) chain.push(new AnthropicProvider({ apiKey: anthKey }));
-    if (chain.length === 0) return router;
-    return new Router({ providers: chain, breaker, store });
-  }
-  return router;
+  return resolveBitdeerProviders(req, { breaker, store, router });
 }
 
 // ---- Health & info ----

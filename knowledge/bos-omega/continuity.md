@@ -12,7 +12,7 @@ Aion-Brain is the backend brain for VIDEO-Engine-CCFL. The live process is Node 
 | 7-law kernel | `lib/aion_kernel.js` | COMMIT / DEFER / REJECT + system prompt |
 | Settings / auth | `lib/aion_settings.js` | `AION_API_KEYS`, `AION_ADMIN_KEYS`; fail-closed in production |
 | LLM chain | `lib/aion_chain.js` | Bitdeer-only chat/stream (`BITDEER_*` / `NVIDIA_*` aliases) |
-| Edge providers | `lib/router.js` | `/v1/*` chain; `lib/nvidia_only_guard.js` snapshots then strips OpenAI/Anthropic/xAI/A2E from env. Tools use `lib/secrets.js` (vault + snapshot). |
+| Edge providers | `lib/nvidia_only_providers.js` | BITDEER-PRIMARY `/v1/*` chain (fail-closed). `lib/nvidia_only_guard.js` snapshots then strips OpenAI/Anthropic/xAI/A2E from env. Optional GEMINI/XAI/KIMI/OPENAI tools use `lib/secrets.js` (vault + snapshot) and never join this chain. |
 | Agent loop | `lib/control_loop.js`, `lib/self_state.js`, `lib/agent_runtime.js` | 8-phase SELF_STATE; COMPLETE only with tool evidence |
 | Tools | `lib/brain_tools.js`, `lib/agent_tool_extensions.js`, `lib/external_tools.js` | Search, browser, GDY, n8n, Firecrawl, TeacherRAG, BOS retrieve |
 | Episodic memory | `lib/memory.js` | SQLite episodes / facts / goals; `/api/chat` `contextPack` |

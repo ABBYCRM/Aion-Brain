@@ -130,10 +130,10 @@ New (env-backed, fail-soft if the key is missing — **no fabricated success**):
 | `e2b_run` | `E2B_API_KEY` | Reports the real sandbox create result |
 | `hedra_status` / `hedra_generate` / `hedra_job` | `HEDRA_API_KEY` | Catalog + v3 submit (`POST /v3/models/{id}`) + job poll. Generate is operator-requested only. |
 | `youtube_search` / `youtube_video` | `YOUTUBE_API_KEY` | YouTube Data API v3 search + video lookup |
-| `gemini_chat` | `GEMINI_API_KEY` | Gemini generateContent. `/v1` chat stays Bitdeer. |
-| `xai_chat` | `XAI_API_KEY` | Grok chat. Key is used from the loaded snapshot after the Bitdeer `/v1` guard. |
-| `kimi_chat` | `KIMI_API_KEY` | Moonshot/Kimi chat completions |
-| `openai_chat` / `openai_embed` | `OPENAI_API_KEY` | Direct OpenAI chat/embeddings. `/v1` gateway stays Bitdeer. |
+| `gemini_chat` | `GEMINI_API_KEY` | Optional side tool. Use only when the operator names Gemini. `/v1` + `/api/chat` stay Bitdeer. Fail-soft if missing. |
+| `xai_chat` | `XAI_API_KEY` | Optional side tool. Use only when the operator names Grok/xAI. Key is used from the loaded snapshot after the Bitdeer `/v1` guard. |
+| `kimi_chat` | `KIMI_API_KEY` | Optional side tool. Use only when the operator names Kimi. Fail-soft if missing. |
+| `openai_chat` / `openai_embed` | `OPENAI_API_KEY` | Optional side tool. Use only when the operator names OpenAI. Never a production chat default. `/v1` stays Bitdeer. |
 | `embeddings_embed` | `EMBEDDINGS_API_KEY` (fallback BITDEER/OPENAI) | Hosted embeddings |
 | `pinecone_query` / `pinecone_upsert` | `PINECONE_API_KEY` + `PINECONE_INDEX_HOST` | Wired into BOS retrieve and memory write/search when configured |
 | `resend_send` | `RESEND_API_KEY` | Side-effecting; operator-requested only |
