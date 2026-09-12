@@ -53,7 +53,21 @@ Auth on all of these: `X-AION-Key` or `Authorization: Bearer` matching
 | `/api/agents/:id/steer` | POST | `{ message, goal_override? }` — operator steer while queued/running |
 | `/api/agents/:id/stop` | POST | Cooperative stop |
 | `/api/agents/:id/cleanup` | POST | After done: drop result payload |
-| `/api/memory/bos` | GET | `?q=Trinity` local BOS RAG retrieve |
+| `/api/memory/bos` | GET | `?q=Trinity` local BOS RAG retrieve. Omit `q` for status + ingest-if-missing. |
+| `/api/memory/bos` | POST | Ingest corpus if missing; upsert `{ source_id, title, content, authority? }`; optional `{ query }` retrieve. |
+| `/api/decision` | POST | Canon Trinity judgment. Body: `{ user_input \| goal \| prompt }`. Returns `{ state: GO\|HOLD\|ABORT, trinity: { reasons, alpha, praxis, omega }, decision }` (7-law COMMIT/DEFER/REJECT kept). |
+| `/api/routines` | GET | List named operator routines |
+| `/api/routines` | POST | Create/upsert `{ name, trigger, steps, success, status? }` |
+| `/api/routines/:name` | GET | Read one routine |
+| `/api/routines/:name` | PUT | Update |
+| `/api/routines/:name/pause` | POST | Pause (`routine_run` refuses paused) |
+| `/api/routines/:name/resume` | POST | Resume |
+| `/api/routines/:name/run` | POST | Run against Brain tools |
+| `/api/routines/:name` | DELETE | Delete |
+| `/api/connectors` | GET | Configured integrations from env. **Names + booleans only — never secret values.** |
+| `/api/mcp/status` | GET | MCP servers (n8n). Names + configured flags only. |
+
+VIDEO-Engine-CCFL must **proxy these Brain paths**. Do not add a second BOS RAG, routine store, Trinity gate, or MCP inventory stub on CCFL. Auth is the same `AION_BASE_URL` + `AION_API_KEY` (`X-AION-Key` or `Authorization: Bearer`) already used for `/api/claw/execute`.
 
 ### `POST /api/claw/execute` body
 

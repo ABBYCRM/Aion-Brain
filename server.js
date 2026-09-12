@@ -26,7 +26,7 @@ import {
 } from './lib/router.js';
 import { Auditor } from './lib/auditor.js';
 import { Brain } from './lib/brain.js';
-import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, DecisionState, resolveBosGate } from './lib/aion_kernel.js';
+import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, resolveBosGate, TrinityState } from './lib/aion_kernel.js';
 import { AionChain } from './lib/aion_chain.js';
 import { aionSettings } from './lib/aion_settings.js';
 import { ToolRegistry, TOOL_CATALOG } from './lib/brain_tools.js';
@@ -48,7 +48,8 @@ import {
 import { PHASE_ORDER } from './lib/self_state.js';
 import { getBosRag, seedBosFacts, isBosTopic, formatBosContext } from './lib/bos_omega_rag.js';
 import { AgentOrchestrator, defaultAgentJobsPath } from './lib/agent_jobs.js';
-import { RoutineStore } from './lib/routines.js';
+import { RoutineStore, runRoutine } from './lib/routines.js';
+import { connectorsSnapshot, mcpStatus } from './lib/connectors.js';
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
 const ROOT = process.cwd();
@@ -218,7 +219,7 @@ app.get('/healthz', (req, res) => {
     ok: true,
     ts: Date.now(),
     uptime_s: Math.round(process.uptime()),
-    version: '0.1.21',
+    version: '0.1.22',
     secrets: { gdy: gdyConfigured(), cursor: cursorConfigured() },
   });
 });
@@ -227,7 +228,7 @@ app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.21',
+    version: '0.1.22',
     description: 'Plug-and-play LLM gateway with AION 7-law kernel, Bitdeer-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -260,6 +261,12 @@ app.get('/', (req, res) => {
       'POST /api/cursor/launch',
       'GET  /api/cursor/:id',
       'GET  /api/memory/bos',
+      'POST /api/memory/bos',
+      'POST /api/decision',
+      'GET  /api/routines',
+      'POST /api/routines',
+      'GET  /api/connectors',
+      'GET  /api/mcp/status',
     ],
   });
 });
@@ -451,15 +458,65 @@ app.get('/api/audit/recent', (req, res) => {
   res.json({ events });
 });
 
+function retrieveBosForDecision(query, { topK = 6, forceRetrieve = false } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return { retrieved: false, retrieveCount: 0, chunks: [], ingest: null, error: null };
+  if (!forceRetrieve && !isBosTopic(q)) {
+    return { retrieved: false, retrieveCount: 0, chunks: [], ingest: null, error: null };
+  }
+  try {
+    const result = bosRag.retrieveOrIngest(q, { topK });
+    const chunks = result.chunks || [];
+    return {
+      retrieved: chunks.length > 0,
+      retrieveCount: chunks.length,
+      chunks,
+      ingest: result.ingest || null,
+      error: result.ok === false ? (result.error || 'retrieve_failed') : null,
+      embedder: result.embedder || null,
+    };
+  } catch (e) {
+    return { retrieved: false, retrieveCount: 0, chunks: [], ingest: null, error: e.message };
+  }
+}
+
 app.post('/api/decision', (req, res) => {
   try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
-  const userInput = String(req.body?.user_input || '').trim();
+  const userInput = String(req.body?.user_input || req.body?.goal || req.body?.prompt || '').trim();
   if (!userInput) return res.status(400).json({ detail: 'user_input_required' });
   const history = Array.isArray(req.body?.history) ? req.body.history.slice(0, 100) : [];
   const ctx = new MissionContext({ userInput, history });
   const decision = resolveDecision(ctx);
-  store.recordCall({ ts: Date.now(), app_id: ctx.fingerprint(), provider: 'kernel', model: '7-law', operation: 'aion.decision', status: 200, latency_ms: 0, request_id: ctx.requestId });
-  res.json({ request_id: ctx.requestId, decision });
+  const pack = retrieveBosForDecision(userInput, {
+    topK: Math.min(20, Number(req.body?.topK) || 6),
+    forceRetrieve: req.body?.retrieve === true,
+  });
+  const trinity = resolveBosGate(userInput, {
+    retrieved: pack.retrieved,
+    retrieveCount: pack.retrieveCount,
+    retrieveError: pack.error,
+  });
+  store.recordCall({ ts: Date.now(), app_id: ctx.fingerprint(), provider: 'kernel', model: 'trinity-7-law', operation: 'aion.decision', status: 200, latency_ms: 0, request_id: ctx.requestId });
+  res.json({
+    request_id: ctx.requestId,
+    ok: true,
+    state: trinity.state,
+    trinity,
+    decision,
+    mapped_decision: trinity.mapped_decision,
+    retrieved: {
+      count: pack.retrieveCount,
+      embedder: pack.embedder || null,
+      sources: pack.chunks.map((c) => ({
+        source_id: c.source_id,
+        authority: c.authority,
+        score: c.score,
+        title: c.title,
+      })),
+    },
+    ingest: pack.ingest,
+    gate: TrinityState,
+  });
 });
 
 app.post('/api/chat', async (req, res) => {
@@ -735,7 +792,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.21',
+    version: '0.1.22',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
     agent_model: aionSettings.agentModel,
@@ -756,19 +813,77 @@ app.get('/api/state', (req, res) => {
       inngest: Boolean(String(process.env.INNGEST_EVENT_KEY || '').trim()),
     },
     cursor: cursorPublicStatus(),
+    connectors: connectorsSnapshot(),
   });
 });
 
-// Memory read API (admin only — durable SQLite, can leak session context otherwise)
+function serializeBosRetrieve(result, query) {
+  return {
+    ok: Boolean(result?.ok),
+    query,
+    count: result?.chunks?.length || 0,
+    chunks: result?.chunks || [],
+    embedder: result?.embedder || null,
+    ingest: result?.ingest || null,
+  };
+}
+
+// BOS memory: retrieve (GET) + ingest/upsert (POST). Auto-ingests if the store is empty.
 app.get('/api/memory/bos', (req, res) => {
   try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
   const q = String(req.query.q || req.query.query || '').trim();
-  if (!q) return res.status(400).json({ ok: false, error: 'query_required' });
+  if (!q) {
+    try {
+      const ingest = bosRag.upsertIfMissing();
+      return res.json({ ok: true, status: bosRag.status(), ingest });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  }
   try {
-    const result = bosRag.retrieve(q, { topK: Math.min(20, Number(req.query.topK) || 6) });
-    res.json({ ok: result.ok, query: q, count: result.chunks.length, chunks: result.chunks, embedder: result.embedder });
+    const result = bosRag.retrieveOrIngest(q, { topK: Math.min(20, Number(req.query.topK) || 6) });
+    res.json(serializeBosRetrieve(result, q));
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/memory/bos', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const upserts = [];
+  try {
+    const ingest = body.ingest === true ? bosRag.ingestLocal() : bosRag.upsertIfMissing();
+    const docs = Array.isArray(body.documents) ? [...body.documents] : [];
+    if (body.content || body.source_id || body.sourceId) {
+      docs.push({
+        source_id: body.source_id || body.sourceId,
+        title: body.title,
+        content: body.content,
+        authority: body.authority,
+      });
+    }
+    for (const doc of docs) {
+      upserts.push(bosRag.upsertDocument({
+        sourceId: doc.source_id || doc.sourceId,
+        title: doc.title,
+        content: doc.content,
+        authority: doc.authority,
+      }));
+    }
+    const q = String(body.query || body.q || '').trim();
+    const retrieve = q
+      ? bosRag.retrieveOrIngest(q, { topK: Math.min(20, Number(body.topK) || 6) })
+      : null;
+    res.json({
+      ok: true,
+      ingest,
+      upserts,
+      status: bosRag.status(),
+      retrieve: retrieve ? serializeBosRetrieve(retrieve, q) : null,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
   }
 });
 
@@ -778,6 +893,86 @@ app.get('/api/memory/episodes', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 500);
   const eps = memory.recentEpisodes({ sessionId, limit });
   res.json({ ok: true, episodes: eps, count: eps.length });
+});
+
+function routineFromBody(body, nameFallback) {
+  return {
+    name: body?.name || nameFallback,
+    trigger: body?.trigger,
+    steps: body?.steps,
+    success: body?.success,
+    status: body?.status,
+  };
+}
+
+app.get('/api/routines', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const items = routines.list();
+  res.json({ ok: true, count: items.length, routines: items });
+});
+
+app.post('/api/routines', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const routine = routines.upsert(routineFromBody(req.body));
+    res.status(201).json({ ok: true, routine });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/routines/:name', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const routine = routines.get(req.params.name);
+  if (!routine) return res.status(404).json({ ok: false, error: 'routine_not_found' });
+  res.json({ ok: true, routine });
+});
+
+app.put('/api/routines/:name', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const routine = routines.upsert(routineFromBody({ ...req.body, name: req.params.name }));
+    res.json({ ok: true, routine });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/routines/:name/pause', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const routine = routines.pause(req.params.name);
+  if (!routine) return res.status(404).json({ ok: false, error: 'routine_not_found' });
+  res.json({ ok: true, routine });
+});
+
+app.post('/api/routines/:name/resume', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const routine = routines.resume(req.params.name);
+  if (!routine) return res.status(404).json({ ok: false, error: 'routine_not_found' });
+  res.json({ ok: true, routine });
+});
+
+app.post('/api/routines/:name/run', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await runRoutine(routines, brainTools, req.params.name);
+  res.status(result.ok ? 200 : 400).json({ ok: result.ok, ...result });
+});
+
+app.delete('/api/routines/:name', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const routine = routines.delete(req.params.name);
+  if (!routine) return res.status(404).json({ ok: false, error: 'routine_not_found' });
+  res.json({ ok: true, deleted: routine.name });
+});
+
+app.get('/api/connectors', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  res.json(connectorsSnapshot());
+});
+
+app.get('/api/mcp/status', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  res.json(mcpStatus());
 });
 
 app.get('/api/tools', (req, res) => {
@@ -802,7 +997,7 @@ app.post('/api/tools/:name', async (req, res) => {
 // the existing SSE event names so aionConsult keeps working.
 
 const CLAW_CONTRACT = Object.freeze({
-  version: '0.1.21',
+  version: '0.1.22',
   phases: PHASE_ORDER,
   endpoints: {
     execute: { method: 'POST', path: '/api/claw/execute', alias: '/api/agent/run' },
@@ -820,7 +1015,19 @@ const CLAW_CONTRACT = Object.freeze({
     cursor_result: { method: 'GET', path: '/api/cursor/:id/result' },
     cursor_reply: { method: 'POST', path: '/api/cursor/:id/reply' },
     cursor_cancel: { method: 'POST', path: '/api/cursor/:id/cancel' },
-    memory_bos: { method: 'GET', path: '/api/memory/bos?q=' },
+    memory_bos: { method: 'GET', path: '/api/memory/bos?q=', notes: 'Retrieve. Empty store auto-ingests Canon/Patch/Continuity. GET without q returns status.' },
+    memory_bos_ingest: { method: 'POST', path: '/api/memory/bos', notes: 'Ingest corpus if missing; upsert documents; optional query retrieve. CCFL proxy this — do not add a second RAG stub.' },
+    decision: { method: 'POST', path: '/api/decision', notes: 'Trinity GO/HOLD/ABORT via resolveBosGate + 7-law decision. Body: user_input|goal|prompt. Returns state + trinity.reasons + decision (COMMIT/DEFER/REJECT).' },
+    routines: { method: 'GET', path: '/api/routines', notes: 'List named operator routines' },
+    routines_create: { method: 'POST', path: '/api/routines' },
+    routine_get: { method: 'GET', path: '/api/routines/:name' },
+    routine_update: { method: 'PUT', path: '/api/routines/:name' },
+    routine_pause: { method: 'POST', path: '/api/routines/:name/pause' },
+    routine_resume: { method: 'POST', path: '/api/routines/:name/resume' },
+    routine_run: { method: 'POST', path: '/api/routines/:name/run' },
+    routine_delete: { method: 'DELETE', path: '/api/routines/:name' },
+    connectors: { method: 'GET', path: '/api/connectors', notes: 'Configured integrations from env. Names + booleans only; no secret values.' },
+    mcp_status: { method: 'GET', path: '/api/mcp/status', notes: 'MCP servers configured (n8n). Names only.' },
   },
   auth: 'X-AION-Key or Authorization: Bearer (must match AION_API_KEYS)',
   execute_body: {
@@ -1156,7 +1363,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.21',
+    version: '0.1.22',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',

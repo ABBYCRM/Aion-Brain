@@ -14,7 +14,16 @@ Or against a running brain:
 
 ```bash
 curl -s -H "X-AION-Key: $AION_API_KEY" "$AION_BASE_URL/api/memory/bos?q=Trinity"
+curl -s -X POST -H "X-AION-Key: $AION_API_KEY" -H "Content-Type: application/json" \
+  -d '{"ingest":true,"query":"Trinity"}' "$AION_BASE_URL/api/memory/bos"
+curl -s -X POST -H "X-AION-Key: $AION_API_KEY" -H "Content-Type: application/json" \
+  -d '{"user_input":"Explain Trinity Alpha Omega Praxis"}' "$AION_BASE_URL/api/decision"
+curl -s -H "X-AION-Key: $AION_API_KEY" "$AION_BASE_URL/api/routines"
+curl -s -H "X-AION-Key: $AION_API_KEY" "$AION_BASE_URL/api/connectors"
+curl -s -H "X-AION-Key: $AION_API_KEY" "$AION_BASE_URL/api/mcp/status"
 ```
+
+CCFL proxies `/api/memory/bos`, `/api/decision`, `/api/routines*`, `/api/connectors`, `/api/mcp/status` to Brain. Do not invent a second store.
 
 ## Dynamic spawn (CCFL / frontend)
 

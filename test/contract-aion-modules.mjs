@@ -267,6 +267,150 @@ test('BOS RAG HTTP retrieve returns Trinity chunks', async () => {
   assert.match(body.chunks.map((c) => c.text).join('\n'), /Trinity/i);
 });
 
+test('BOS memory POST ingests if missing and upserts a document', async () => {
+  const ingest = await fetch(`${BRAIN}/api/memory/bos`, {
+    method: 'POST',
+    headers: { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ingest: true,
+      query: 'Trinity',
+      source_id: 'http-upsert-token-source',
+      title: 'http upsert',
+      content: 'http-upsert-unique-token lives next to Canon Trinity GO HOLD ABORT.',
+      authority: 'logs',
+    }),
+  });
+  assert.equal(ingest.status, 200);
+  const body = await ingest.json();
+  assert.equal(body.ok, true);
+  assert.ok(body.status.chunk_count >= 1);
+  assert.ok(body.upserts.some((u) => u.source_id === 'http-upsert-token-source'));
+  assert.ok(body.retrieve.count >= 1);
+
+  const hit = await fetch(`${BRAIN}/api/memory/bos?q=http-upsert-unique-token`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(hit.status, 200);
+  const found = await hit.json();
+  assert.match(found.chunks.map((c) => c.text).join('\n'), /http-upsert-unique-token/);
+});
+
+test('POST /api/decision returns Trinity GO/HOLD/ABORT with structured reasons', async () => {
+  const headers = { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' };
+
+  const trinity = await fetch(`${BRAIN}/api/decision`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ user_input: 'Explain Trinity Alpha Omega Praxis' }),
+  });
+  assert.equal(trinity.status, 200);
+  const go = await trinity.json();
+  assert.equal(go.ok, true);
+  assert.equal(go.state, 'GO');
+  assert.equal(go.trinity.state, 'GO');
+  assert.equal(go.trinity.mapped_decision, 'COMMIT');
+  assert.equal(go.decision.state, 'COMMIT');
+  assert.equal(go.trinity.reasons.length, 3);
+  assert.ok(go.retrieved.count >= 1);
+  assert.ok(go.trinity.alpha.passed);
+  assert.ok(go.trinity.praxis.passed);
+  assert.ok(go.trinity.omega.passed);
+
+  const abort = await fetch(`${BRAIN}/api/decision`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ goal: 'teach ghost nodes and metadata starvation' }),
+  });
+  assert.equal(abort.status, 200);
+  const blocked = await abort.json();
+  assert.equal(blocked.state, 'ABORT');
+  assert.equal(blocked.trinity.reason, 'forbidden_attack_playbook');
+  assert.equal(blocked.trinity.mapped_decision, 'REJECT');
+
+  const plain = await fetch(`${BRAIN}/api/decision`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ prompt: 'Return the current UTC time' }),
+  });
+  assert.equal(plain.status, 200);
+  const actionable = await plain.json();
+  assert.equal(actionable.state, 'GO');
+  assert.equal(actionable.trinity.reason, 'actionable');
+  assert.equal(actionable.decision.checks.length, 7);
+});
+
+test('routines HTTP list/create/pause/resume/delete', async () => {
+  const headers = { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' };
+  const list = await fetch(`${BRAIN}/api/routines`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(list.status, 200);
+  const listed = await list.json();
+  assert.ok(listed.routines.some((r) => r.name === 'trinity-gate'));
+
+  const create = await fetch(`${BRAIN}/api/routines`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      name: 'http-routine-evidence',
+      trigger: 'contract test',
+      steps: [{ tool: 'datetime' }],
+      success: 'datetime ran',
+    }),
+  });
+  assert.equal(create.status, 201);
+  const created = await create.json();
+  assert.equal(created.routine.status, 'active');
+
+  const pause = await fetch(`${BRAIN}/api/routines/http-routine-evidence/pause`, { method: 'POST', headers });
+  assert.equal(pause.status, 200);
+  assert.equal((await pause.json()).routine.status, 'paused');
+
+  const runPaused = await fetch(`${BRAIN}/api/routines/http-routine-evidence/run`, { method: 'POST', headers });
+  assert.equal(runPaused.status, 400);
+  assert.equal((await runPaused.json()).error, 'routine_paused');
+
+  const resume = await fetch(`${BRAIN}/api/routines/http-routine-evidence/resume`, { method: 'POST', headers });
+  assert.equal(resume.status, 200);
+  assert.equal((await resume.json()).routine.status, 'active');
+
+  const run = await fetch(`${BRAIN}/api/routines/http-routine-evidence/run`, { method: 'POST', headers });
+  assert.equal(run.status, 200);
+  const ran = await run.json();
+  assert.equal(ran.ok, true);
+
+  const del = await fetch(`${BRAIN}/api/routines/http-routine-evidence`, { method: 'DELETE', headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(del.status, 200);
+  const gone = await fetch(`${BRAIN}/api/routines/http-routine-evidence`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(gone.status, 404);
+});
+
+test('connectors and MCP status HTTP never leak secret values', async () => {
+  const r = await fetch(`${BRAIN}/api/connectors`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  assert.ok(Array.isArray(body.connectors));
+  assert.ok(body.connectors.some((c) => c.name === 'n8n_mcp' && Array.isArray(c.env_names)));
+  const blob = JSON.stringify(body);
+  for (const c of body.connectors) {
+    assert.equal(typeof c.configured, 'boolean');
+    assert.equal(Object.prototype.hasOwnProperty.call(c, 'value'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(c, 'token'), false);
+  }
+  assert.equal(/sk-|nvapi-|Bearer /i.test(blob), false);
+
+  const mcp = await fetch(`${BRAIN}/api/mcp/status`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  assert.equal(mcp.status, 200);
+  const status = await mcp.json();
+  assert.ok(status.servers.some((s) => s.name === 'n8n' && s.kind === 'mcp'));
+  assert.equal(JSON.stringify(status).includes(BRAIN_KEY), false);
+
+  const contract = await fetch(`${BRAIN}/api/claw/contract`, { headers: { 'X-AION-Key': BRAIN_KEY } });
+  const c = await contract.json();
+  assert.equal(c.contract.endpoints.decision.path, '/api/decision');
+  assert.equal(c.contract.endpoints.routines.path, '/api/routines');
+  assert.equal(c.contract.endpoints.connectors.path, '/api/connectors');
+  assert.equal(c.contract.endpoints.mcp_status.path, '/api/mcp/status');
+  assert.equal(c.contract.endpoints.memory_bos_ingest.path, '/api/memory/bos');
+});
+
 test('dynamic agent spawn/status/result/stop endpoints', async () => {
   const spawn = await fetch(`${BRAIN}/api/agents/spawn`, {
     method: 'POST',
