@@ -177,17 +177,17 @@ function parseSseStream(sseStrings) {
   return out;
 }
 
-await t('AionChain true-streams through an NVIDIA-named provider', async () => {
+await t('AionChain true-streams through a Bitdeer-named provider', async () => {
   const body = makeSseBody([
     { choices: [{ delta: { content: 'A' }, index: 0 }] },
     { choices: [{ delta: { content: 'B' }, index: 0 }] },
     { choices: [{ delta: {}, finish_reason: 'stop', index: 0 }] },
-    { model: 'nvidia/nemotron-3-super-120b-a12b', choices: [], usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } },
+    { model: 'zai-org/GLM-5', choices: [], usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } },
   ]);
-  const provider = new OpenAIProvider({ apiKey: 'test-key', name: 'nvidia' });
+  const provider = new OpenAIProvider({ apiKey: 'test-key', name: 'bitdeer' });
   provider.streamChat = ({ payload }) => new OpenAIProvider({
     apiKey: 'test-key',
-    name: 'nvidia',
+    name: 'bitdeer',
   }).streamChat({
     payload,
     fetchImpl: async () => ({ ok: true, status: 200, body: fakeBody([body]) }),

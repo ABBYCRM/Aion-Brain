@@ -1,3 +1,4 @@
+from .bos_omega import seed_bos_omega
 from .coding_agent import AgentRun, ExecutingCodingAgent
 from .executor import CommandResult, TemporaryWorkspace, WorkspaceExecutor
 from .models import LearnerState, SourceDocument, TeachingPacket
@@ -15,5 +16,6 @@ __all__ = [
     "TemporaryWorkspace",
     "WorkspaceExecutor",
     "iter_repository_documents",
+    "seed_bos_omega",
     "vectorize_repository",
 ]

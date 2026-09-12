@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .bos_omega import seed_bos_omega
 from .coding_agent import ExecutingCodingAgent
 from .curriculum import seed_curriculum
 from .executor import WorkspaceExecutor
@@ -46,7 +47,10 @@ def main() -> None:
     tutor = TeacherRAG()
 
     if args.command == "seed":
-        print(json.dumps({"chunks_written": seed_curriculum(tutor)}))
+        print(json.dumps({
+            "chunks_written": seed_curriculum(tutor),
+            "bos_omega_chunks": seed_bos_omega(tutor),
+        }))
         return
 
     if args.command == "vectorize":

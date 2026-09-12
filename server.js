@@ -26,7 +26,7 @@ import {
 } from './lib/router.js';
 import { Auditor } from './lib/auditor.js';
 import { Brain } from './lib/brain.js';
-import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, DecisionState } from './lib/aion_kernel.js';
+import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, DecisionState, resolveBosGate } from './lib/aion_kernel.js';
 import { AionChain } from './lib/aion_chain.js';
 import { aionSettings } from './lib/aion_settings.js';
 import { ToolRegistry, TOOL_CATALOG } from './lib/brain_tools.js';
@@ -42,7 +42,13 @@ import { registerSQMRoutes } from './lib/sqm.js';
 import { pickSkills, buildSkillContext } from './lib/skill_router.js';
 import { AgentRuntime } from './lib/agent_runtime.js';
 import { configuredSecrets, classifyComposioKey, envSecret, gdyConfigured } from './lib/external_tools.js';
+import {
+  cursorConfigured, cursorPublicStatus, cursorLaunch, cursorStatus, cursorReply, cursorCancel, cursorList,
+} from './lib/cursor_cloud.js';
 import { PHASE_ORDER } from './lib/self_state.js';
+import { getBosRag, seedBosFacts, isBosTopic, formatBosContext } from './lib/bos_omega_rag.js';
+import { AgentOrchestrator, defaultAgentJobsPath } from './lib/agent_jobs.js';
+import { RoutineStore } from './lib/routines.js';
 
 const PORT = parseInt(process.env.PORT || '10000', 10);
 const ROOT = process.cwd();
@@ -96,8 +102,26 @@ const memory = new AgentMemory(join(process.env.LLM_GATEWAY_DATA_DIR || './data'
 // (for the skill reranker). AION owns its own web_search; the brain
 // also exposes web_search so direct callers (curl, scripts) can use it.
 const ddgSearcher = buildDdgSearcher();
-const brainTools = new ToolRegistry({ searcher: ddgSearcher, chain: aionChain });
+const routines = new RoutineStore(join(process.env.LLM_GATEWAY_DATA_DIR || './data', 'routines.sqlite'));
+const bosRag = getBosRag({
+  dbPath: join(process.env.LLM_GATEWAY_DATA_DIR || './data', 'bos-omega.sqlite'),
+  corpusDir: join(ROOT, 'knowledge', 'bos-omega'),
+});
+seedBosFacts(memory);
+const brainTools = new ToolRegistry({
+  searcher: ddgSearcher,
+  chain: aionChain,
+  memory,
+  routines,
+});
 const agentRuntime = new AgentRuntime({ chain: aionChain, tools: brainTools });
+const agentOrchestrator = new AgentOrchestrator({
+  dbPath: defaultAgentJobsPath(),
+  tools: brainTools,
+  chain: aionChain,
+});
+brainTools.setOrchestrator(agentOrchestrator);
+agentOrchestrator.start();
 
 // Validate AION settings on boot (fail-closed in production)
 try {
@@ -194,8 +218,8 @@ app.get('/healthz', (req, res) => {
     ok: true,
     ts: Date.now(),
     uptime_s: Math.round(process.uptime()),
-    version: '0.1.20',
-    secrets: { gdy: gdyConfigured() },
+    version: '0.1.21',
+    secrets: { gdy: gdyConfigured(), cursor: cursorConfigured() },
   });
 });
 
@@ -203,7 +227,7 @@ app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.20',
+    version: '0.1.21',
     description: 'Plug-and-play LLM gateway with AION 7-law kernel, Bitdeer-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -230,6 +254,12 @@ app.get('/', (req, res) => {
       'GET  /api/claw/contract',
       'GET  /api/claw/tools',
       'POST /api/claw/tools/:name',
+      'POST /api/agents/spawn',
+      'GET  /api/agents/:id',
+      'GET  /api/agents/:id/result',
+      'POST /api/cursor/launch',
+      'GET  /api/cursor/:id',
+      'GET  /api/memory/bos',
     ],
   });
 });
@@ -558,15 +588,26 @@ app.post('/api/chat', async (req, res) => {
   // are this session's own prior turns (durable across requests now that
   // sessionId is stable); facts/goals are cross-session long-term memory.
   const toolContext = toolEvidence ? JSON.stringify(toolEvidence).slice(0, 1000) : '';
+  let bosFacts = [];
+  try { bosFacts = memory.factsFor('bos-omega', 12); } catch { bosFacts = []; }
   const notesLines = [
     ...(memoryPack?.episodes || []).slice().reverse().map(e => `- [prior ${e.role}] ${e.content}`),
     ...(memoryPack?.facts || []).map(f => `- known fact: ${f}`),
+    ...bosFacts.map(f => `- bos fact: ${f.subject} ${f.predicate} ${f.object}`),
     ...(memoryPack?.goals || []).map(g => `- active goal: ${g.title} (${Math.round((g.progress || 0) * 100)}%)`),
   ];
   const notesContext = notesLines.join('\n');
+  let bosPack = null;
+  if (isBosTopic(userText) || req.body?.retrieve === true) {
+    try { bosPack = bosRag.retrieve(userText, { topK: 6 }); } catch { bosPack = null; }
+  }
+  const bosGate = resolveBosGate(userText, { retrieved: Boolean(bosPack?.chunks?.length) });
+  const bosContext = bosPack?.ok ? formatBosContext(bosPack) : '';
   const systemPrompt = buildSystemPrompt(decision, {
     toolContext,
     notesContext,
+    bosContext,
+    bosGate,
     lattice: { consensus: lattice.consensus, rationale: lattice.rationale, votes: lattice.votes },
   });
   // Prepend the auto-picked skills (if any) to the system prompt as
@@ -585,6 +626,8 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('X-AION-Skills-Source', String(skillInject.source || 'none'));
     res.setHeader('X-AION-Skills-Count', String(skillInject.included?.length || 0));
   }
+  res.setHeader('X-AION-Bos-Gate', bosGate.state);
+  if (bosPack?.ok) res.setHeader('X-AION-Bos-Chunks', String(bosPack.chunks.length));
   res.flushHeaders && res.flushHeaders();
 
   // 1) decision event
@@ -598,6 +641,16 @@ app.post('/api/chat', async (req, res) => {
     rationale: lattice.rationale,
     free_energy: activeState.freeEnergy(),
   })}\n\n`);
+
+  if (bosPack?.ok) {
+    res.write(`data: ${JSON.stringify({
+      type: 'bos_omega',
+      query: userText.slice(0, 200),
+      gate: bosGate,
+      count: bosPack.chunks.length,
+      sources: bosPack.chunks.map((c) => ({ source_id: c.source_id, authority: c.authority, score: c.score })),
+    })}\n\n`);
+  }
 
   // 2.5) skill injection event (proves the reranker fired and what it picked)
   if (skillInject) {
@@ -682,7 +735,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.20',
+    version: '0.1.21',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
     agent_model: aionSettings.agentModel,
@@ -696,10 +749,29 @@ app.get('/api/state', (req, res) => {
       tools_configured: configuredSecrets(),
       composio_key_type: envSecret('COMPOSIO_API_KEY') ? classifyComposioKey(envSecret('COMPOSIO_API_KEY')).type : 'missing',
     },
+    bos_omega: bosRag.status(),
+    agents: {
+      spawn: '/api/agents/spawn',
+      persistence: 'sqlite',
+      inngest: Boolean(String(process.env.INNGEST_EVENT_KEY || '').trim()),
+    },
+    cursor: cursorPublicStatus(),
   });
 });
 
 // Memory read API (admin only — durable SQLite, can leak session context otherwise)
+app.get('/api/memory/bos', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const q = String(req.query.q || req.query.query || '').trim();
+  if (!q) return res.status(400).json({ ok: false, error: 'query_required' });
+  try {
+    const result = bosRag.retrieve(q, { topK: Math.min(20, Number(req.query.topK) || 6) });
+    res.json({ ok: result.ok, query: q, count: result.chunks.length, chunks: result.chunks, embedder: result.embedder });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/memory/episodes', (req, res) => {
   try { aionAdmin(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
   const sessionId = (req.query.sessionId && String(req.query.sessionId)) || null;
@@ -730,7 +802,7 @@ app.post('/api/tools/:name', async (req, res) => {
 // the existing SSE event names so aionConsult keeps working.
 
 const CLAW_CONTRACT = Object.freeze({
-  version: '0.1.20',
+  version: '0.1.21',
   phases: PHASE_ORDER,
   endpoints: {
     execute: { method: 'POST', path: '/api/claw/execute', alias: '/api/agent/run' },
@@ -738,6 +810,17 @@ const CLAW_CONTRACT = Object.freeze({
     tool_run: { method: 'POST', path: '/api/claw/tools/:name', alias: '/api/tools/:name' },
     consult: { method: 'POST', path: '/api/chat', notes: 'Set agentic:true to run the control loop inside the existing SSE stream' },
     state: { method: 'GET', path: '/api/state' },
+    spawn: { method: 'POST', path: '/api/agents/spawn', notes: 'Dynamic on-the-spot ephemeral subagent. Goal + optional tool allowlist + acceptance. Not a prefabricated role.' },
+    agent_status: { method: 'GET', path: '/api/agents/:id' },
+    agent_result: { method: 'GET', path: '/api/agents/:id/result' },
+    agent_steer: { method: 'POST', path: '/api/agents/:id/steer' },
+    agent_stop: { method: 'POST', path: '/api/agents/:id/stop' },
+    cursor_launch: { method: 'POST', path: '/api/cursor/launch', notes: 'Dynamic Cursor cloud agent. Brain owns the client; CCFL calls this or cursor_launch tool. Requires CURSOR_API_KEY.' },
+    cursor_status: { method: 'GET', path: '/api/cursor/:id' },
+    cursor_result: { method: 'GET', path: '/api/cursor/:id/result' },
+    cursor_reply: { method: 'POST', path: '/api/cursor/:id/reply' },
+    cursor_cancel: { method: 'POST', path: '/api/cursor/:id/cancel' },
+    memory_bos: { method: 'GET', path: '/api/memory/bos?q=' },
   },
   auth: 'X-AION-Key or Authorization: Bearer (must match AION_API_KEYS)',
   execute_body: {
@@ -797,11 +880,19 @@ async function runAgentFromRequest(req, principal) {
     ? req.body.acceptance
     : (Array.isArray(req.body?.checks) ? req.body.checks : []);
   const maxCycles = Number.isFinite(req.body?.max_cycles) ? req.body.max_cycles : undefined;
+  const longTermMemory = [];
+  if (isBosTopic(goal)) {
+    try {
+      const hit = bosRag.retrieve(goal);
+      if (hit.ok) longTermMemory.push(formatBosContext(hit));
+    } catch { /* non-fatal */ }
+  }
   const result = await agentRuntime.run({
     goal,
     acceptance,
     sessionId,
     maxCycles,
+    longTermMemory,
     model: req.body?.model || aionSettings.primaryModel,
   });
   return { goal, sessionId, result, answer: answerFromAgent(result) };
@@ -886,6 +977,139 @@ async function handleAgentExecute(req, res) {
 app.post('/api/agent/run', handleAgentExecute);
 app.post('/api/claw/execute', handleAgentExecute);
 
+function agentHttpError(res, e) {
+  return res.status(e.statusCode || 500).json(e.public || { ok: false, error: e.message });
+}
+
+app.post('/api/agents/spawn', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const job = agentOrchestrator.spawn({
+      goal: req.body?.goal || goalFromBody(req.body || {}),
+      context: req.body?.context ?? null,
+      tools: req.body?.tools,
+      acceptance: req.body?.acceptance || req.body?.checks,
+      parent_id: req.body?.parent_id || null,
+      callback_url: req.body?.callback_url || null,
+      max_cycles: req.body?.max_cycles,
+      session_id: req.body?.session_id || req.header('x-aion-session-id') || null,
+      depth: req.body?.depth,
+      template: req.body?.template || null,
+    });
+    res.status(202).json({ ok: true, source: 'aion-brain', job });
+  } catch (e) { return agentHttpError(res, e); }
+});
+
+app.get('/api/agents', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  res.json({
+    ok: true,
+    jobs: agentOrchestrator.list({
+      parent_id: req.query.parent_id || null,
+      status: req.query.status || null,
+      limit: req.query.limit,
+    }),
+  });
+});
+
+app.get('/api/agents/:id', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const job = agentOrchestrator.publicJob(req.params.id);
+  if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
+  res.json({ ok: true, job });
+});
+
+app.get('/api/agents/:id/result', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const job = agentOrchestrator.result(req.params.id);
+  if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
+  res.json({ ok: true, job });
+});
+
+app.post('/api/agents/:id/steer', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const out = agentOrchestrator.steer(req.params.id, req.body?.message || req.body?.text, { goal_override: req.body?.goal_override });
+    if (!out) return res.status(404).json({ ok: false, error: 'job_not_found' });
+    res.json(out);
+  } catch (e) { return agentHttpError(res, e); }
+});
+
+app.post('/api/agents/:id/stop', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const job = agentOrchestrator.stop(req.params.id);
+  if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
+  res.json({ ok: true, job });
+});
+
+app.post('/api/agents/:id/cleanup', (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  try {
+    const job = agentOrchestrator.cleanup(req.params.id);
+    if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
+    res.json({ ok: true, job });
+  } catch (e) { return agentHttpError(res, e); }
+});
+
+function cursorHttpStatus(result, launched = false) {
+  if (result.ok) return launched ? 202 : 200;
+  if (String(result.error || '').includes('unconfigured')) return 400;
+  if (result.error === 'prompt_required' || result.error === 'id_required' || result.error === 'run_id_required') return 400;
+  if (String(result.error || '').includes('http_404')) return 404;
+  return 400;
+}
+
+app.post('/api/cursor/launch', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorLaunch({
+    prompt: req.body?.prompt || req.body?.goal || goalFromBody(req.body || {}),
+    repository: req.body?.repository || req.body?.repo,
+    repos: req.body?.repos,
+    branch: req.body?.branch,
+    startingRef: req.body?.startingRef,
+    name: req.body?.name,
+    model: req.body?.model,
+    autoCreatePR: req.body?.autoCreatePR,
+    workOnCurrentBranch: req.body?.workOnCurrentBranch,
+    mode: req.body?.mode,
+  });
+  res.status(cursorHttpStatus(result, true)).json({ ok: result.ok, source: 'aion-brain', ...result });
+});
+
+app.get('/api/cursor', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorList({ limit: req.query.limit, cursor: req.query.cursor });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.get('/api/cursor/:id', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorStatus({ id: req.params.id, runId: req.query.runId });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.get('/api/cursor/:id/result', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorStatus({ id: req.params.id, runId: req.query.runId });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.post('/api/cursor/:id/reply', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorReply({
+    id: req.params.id,
+    prompt: req.body?.prompt || req.body?.message || req.body?.text,
+    mode: req.body?.mode,
+  });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.post('/api/cursor/:id/cancel', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorCancel({ id: req.params.id, runId: req.body?.runId || req.query.runId });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
 // ---- Audit routes ----
 
 const auditor = new Auditor({ root: ROOT, mode: 'full' });
@@ -932,7 +1156,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.20',
+    version: '0.1.21',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',
@@ -968,7 +1192,12 @@ app.use((err, req, res, _next) => {
 
 function shutdown(sig) {
   console.log(JSON.stringify({ t: new Date().toISOString(), msg: `shutting down on ${sig}` }));
-  server.close(() => { try { store.close(); } catch {} ; process.exit(0); });
+  server.close(() => {
+    try { agentOrchestrator.close(); } catch {}
+    try { store.close(); } catch {}
+    try { memory.close(); } catch {}
+    process.exit(0);
+  });
   setTimeout(() => process.exit(1), 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

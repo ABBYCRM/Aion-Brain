@@ -47,6 +47,13 @@ Auth on all of these: `X-AION-Key` or `Authorization: Bearer` matching
 | `/api/claw/tools` | GET | Tool catalog (same as `/api/tools`) |
 | `/api/claw/tools/:name` | POST | Run one tool (same as `/api/tools/:name`) |
 | `/api/chat` | POST | Consult. Add `"agentic": true` to run the loop inside the existing SSE stream (`decision` / `delta` / `done` preserved for `aionConsult`) |
+| `/api/agents/spawn` | POST | **Dynamic on-the-spot ephemeral subagent.** Body: `{ goal, tools?, acceptance?, context?, callback_url?, parent_id?, max_cycles? }`. Returns `202 { job }`. Not a prefabricated named agent. |
+| `/api/agents/:id` | GET | Job status (`queued\|running\|complete\|failed\|stopped\|cleaned`) |
+| `/api/agents/:id/result` | GET | Status plus result payload |
+| `/api/agents/:id/steer` | POST | `{ message, goal_override? }` — operator steer while queued/running |
+| `/api/agents/:id/stop` | POST | Cooperative stop |
+| `/api/agents/:id/cleanup` | POST | After done: drop result payload |
+| `/api/memory/bos` | GET | `?q=Trinity` local BOS RAG retrieve |
 
 ### `POST /api/claw/execute` body
 
@@ -112,6 +119,7 @@ New (env-backed, fail-soft if the key is missing — **no fabricated success**):
 | `github_repo` | `GITHUB_PERSONAL_ACCESS_TOKEN` (or `GITHUB_TOKEN`) | |
 | `gdy_search` / `gdy_rag_context` / `gdy_categories` / `gdy_tools` | `GDY_API_KEY` (optional `GDY_API_KEY_ALT` on 401) | Luis GDY OSINT tool directory. Base: `GDY_API_BASE` or `GDY_BASE_URL` + `/v1` |
 | `arxiv_search` | none | Official arXiv Atom API (`export.arxiv.org`). No GDY key |
+| `cursor_launch` / `cursor_status` / `cursor_reply` / `cursor_cancel` | `CURSOR_API_KEY` | Brain-owned Cursor Cloud Agents v1 client. Same env name as the CCFL DigitalOcean secret. HTTP aliases: `/api/cursor/launch`, `/api/cursor/:id`, `/api/cursor/:id/reply`, `/api/cursor/:id/cancel`. Fail-soft if unset. |
 
 `web_search` uses Tavily, then Exa, then DuckDuckGo.
 
