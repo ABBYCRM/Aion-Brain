@@ -76,7 +76,7 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/models`                 | AION key     | Provider chain + probes                |
 | GET    | `/api/audit/recent`           | AION admin   | Last audit report                      |
 | POST   | `/api/decision`                | AION key     | Trinity GO/HOLD/ABORT + 7-law decision |
-| POST   | `/api/chat`                   | AION key     | SSE chat with decision + attempt + open + delta + done |
+| POST   | `/api/chat`                   | AION key     | SSE chat; actionable goals use execute loop; delta is natural language only |
 | GET    | `/api/state`                  | AION key     | primary/fallback models, providers, laws, states, uptime, active-state snapshot |
 | GET    | `/api/tools`                  | AION key     | Catalog of kernel-level tools (echo, datetime, free_energy, web_search) |
 | POST   | `/api/tools/:name`            | AION key     | Run a tool, return `{ok, evidence}`    |
@@ -128,6 +128,11 @@ data: {"type":"delta","text":"..."}
 data: {"type":"done","streaming":"simulated","provider":"openai","model":"gpt-4o-mini","latency_ms":1203,"finish_reason":"stop"}
 data: [DONE]
 ```
+
+On the execute path (`/api/claw/execute` or actionable `/api/chat`), additional
+**separate** event types may appear: `self_state`, `phase`, `tool_start`,
+`tool_end`. They are not assistant text. Clients must render only `delta`
+(and the JSON `answer` field) as the user-visible reply.
 
 > **Note on streaming:** as of v0.1.9 OpenAI-compatible providers (OpenAI, NVIDIA NIM, etc.)
 > use **true token streaming** via `streamChat()`. The `done` / `open` events carry

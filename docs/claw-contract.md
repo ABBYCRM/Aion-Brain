@@ -46,7 +46,7 @@ Auth on all of these: `X-AION-Key` or `Authorization: Bearer` matching
 | `/api/agent/run` | POST | Alias of `/api/claw/execute` |
 | `/api/claw/tools` | GET | Tool catalog (same as `/api/tools`) |
 | `/api/claw/tools/:name` | POST | Run one tool (same as `/api/tools/:name`) |
-| `/api/chat` | POST | Consult. Add `"agentic": true` to run the loop inside the existing SSE stream (`decision` / `delta` / `done` preserved for `aionConsult`) |
+| `/api/chat` | POST | Consult by default. Actionable goals auto-run the execute loop unless `"consult": true` or `"agentic": false`. `"agentic": true` still forces the loop. `decision` / `delta` / `done` stay for `aionConsult`. Control events (`self_state` / `phase` / `tool_start` / `tool_end`) are separate types — never concatenated into `delta`. |
 | `/api/agents/spawn` | POST | **Dynamic on-the-spot ephemeral subagent.** Body: `{ goal, tools?, acceptance?, context?, callback_url?, parent_id?, max_cycles? }`. Returns `202 { job }`. Not a prefabricated named agent. |
 | `/api/agents/:id` | GET | Job status (`queued\|running\|complete\|failed\|stopped\|cleaned`) |
 | `/api/agents/:id/result` | GET | Status plus result payload |
@@ -95,7 +95,7 @@ JSON response (default):
   "status": "COMPLETE | INCOMPLETE | BLOCKED",
   "complete": false,
   "verified": false,
-  "answer": "operator-facing text",
+  "answer": "natural-language result only — never INTERNAL STATE / SELF_STATE / Verified= dumps",
   "session_id": "claw:…",
   "self_state": { "previous_tool_results": [], "health": "…", "progress": 0 },
   "cycles": [{ "health": "LOOP_DETECTED", "issues": [], "action": { "kind": "tool", "tool": "datetime", "ok": true } }],
@@ -108,8 +108,13 @@ and an `evidence_id` pointing at a successful tool result. A model saying
 COMPLETE, or a high confidence score, is not enough.
 
 SSE (`Accept: text/event-stream` or `"stream": true`) emits
-`self_state`, `phase`, `delta`, `done`, `[DONE]` so Claw can reuse its
-existing stream parser.
+`self_state`, `phase`, `tool_start`, `tool_end` as **separate event types**,
+then a single `delta` (natural-language answer only), then `done`, `[DONE]`.
+
+**CCFL chat UX:** render only `type: "delta"` (and the JSON `answer` field)
+as assistant-visible text. Do not concatenate `self_state` / `phase` /
+`tool_start` / `tool_end` into the chat bubble. Those events are for
+progress UI, not the operator transcript.
 
 ## Tools Claw can invoke on the brain
 
@@ -165,12 +170,14 @@ A reasoning-only turn is **not** progress; METACONTROL forces an ACTION
 
 ## Recommended Claw change
 
-Keep `aion_status` / `aion_consult` as-is for advice.
+Keep `aion_status` / `aion_consult` as-is for advice-only turns.
 
 For work that must use tools, call `POST {AION_BASE_URL}/api/claw/execute`
 with the operator goal and acceptance checks, then treat
 `previous_tool_results` as the only evidence. Do not mark the Claw
-execution verified from Aion prose.
+execution verified from Aion prose. Brain also auto-routes actionable
+`/api/chat` goals onto this execute loop unless the caller sends
+`"consult": true`.
 
-`aionConsult` can also send `"agentic": true` on `/api/chat` without a
-Claw code change to the SSE parser.
+`aionConsult` can keep its SSE parser. Display **only** `delta` text to
+the user. Control-loop internals are not assistant content.
