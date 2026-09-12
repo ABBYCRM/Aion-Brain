@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.23 — feat: teach all loaded provider keys end-to-end
+- Secrets resolve vault → boot snapshot → env (`lib/secrets.js`). `nvidia_only_guard` still strips OpenAI/Anthropic/xAI/A2E from `process.env` so `/v1` stays Bitdeer; tools use the snapshot. Vault hydrates at boot (`bootVault()`).
+- Tools + catalog + `connectorsSnapshot` (with when-to-use): `youtube_search` / `youtube_video`, `gemini_chat`, `xai_chat`, `kimi_chat`, `openai_chat` / `openai_embed` / `embeddings_embed`, `pinecone_query` / `pinecone_upsert`, `hedra_generate` / `hedra_job`, `composio_list_tools` / `composio_tool_schema` (ak_ live). `cursor_*` unchanged.
+- Pinecone merges into `bos_omega_retrieve`, `GET/POST /api/memory/bos`, and `memory_write_fact` / `memory_search` when `PINECONE_API_KEY` + host are loaded.
+- Fail-soft when unconfigured. Unit tests mock `fetch`. Same tool names as VIDEO-Engine-CCFL where the proxy already uses them.
+- BITDEER-PRIMARY (Luis PS): `/v1` uses `lib/nvidia_only_providers.js` only. Extra GEMINI/XAI/KIMI/OPENAI tools stay optional fail-soft side tools. `primaryModel` / `agentModel` remain Bitdeer catalog (`zai-org/GLM-5`, `mistralai/Mistral-Large-3-675B-Instruct-2512`). CORS no longer advertises `x-openai-key` / `x-a2e-key` / `x-anthropic-key`. Planner never prefers `openai_chat` for generic chat.
+
 ## 0.1.22 — feat: Trinity decision + BOS/routines/MCP HTTP
 - `POST /api/decision` returns Canon Trinity `GO`/`HOLD`/`ABORT` from `resolveBosGate` with structured Alpha/Praxis/Omega reasons, plus the existing 7-law `decision` (`COMMIT`/`DEFER`/`REJECT`). BOS topics retrieve via `bos_omega_rag` before judgment; empty store auto-ingests.
 - `GET`/`POST /api/memory/bos` — retrieve + ingest/upsert. `BosOmegaRag.upsertDocument` / `upsertIfMissing` / `retrieveOrIngest`. GET without `q` returns status and ingests if missing.

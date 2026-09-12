@@ -12,7 +12,7 @@ Aion-Brain is the backend brain for VIDEO-Engine-CCFL. The live process is Node 
 | 7-law kernel | `lib/aion_kernel.js` | COMMIT / DEFER / REJECT + system prompt |
 | Settings / auth | `lib/aion_settings.js` | `AION_API_KEYS`, `AION_ADMIN_KEYS`; fail-closed in production |
 | LLM chain | `lib/aion_chain.js` | Bitdeer-only chat/stream (`BITDEER_*` / `NVIDIA_*` aliases) |
-| Edge providers | `lib/router.js` | `/v1/*` chain; `lib/nvidia_only_guard.js` deletes OpenAI/Anthropic/xAI/A2E keys at boot |
+| Edge providers | `lib/nvidia_only_providers.js` | BITDEER-PRIMARY `/v1/*` chain (fail-closed). `lib/nvidia_only_guard.js` snapshots then strips OpenAI/Anthropic/xAI/A2E from env. Optional GEMINI/XAI/KIMI/OPENAI tools use `lib/secrets.js` (vault + snapshot) and never join this chain. |
 | Agent loop | `lib/control_loop.js`, `lib/self_state.js`, `lib/agent_runtime.js` | 8-phase SELF_STATE; COMPLETE only with tool evidence |
 | Tools | `lib/brain_tools.js`, `lib/agent_tool_extensions.js`, `lib/external_tools.js` | Search, browser, GDY, n8n, Firecrawl, TeacherRAG, BOS retrieve |
 | Episodic memory | `lib/memory.js` | SQLite episodes / facts / goals; `/api/chat` `contextPack` |
@@ -23,7 +23,7 @@ Aion-Brain is the backend brain for VIDEO-Engine-CCFL. The live process is Node 
 | Connectors / MCP | `lib/connectors.js` | `GET /api/connectors`, `GET /api/mcp/status` (names only) |
 | TeacherRAG | `teacher_rag/` + `lib/teacher_rag.js` | Python SQLite vectors; `teacher_rag_teach` |
 | CCFL contract | `docs/claw-contract.md` | `POST /api/claw/execute`, `GET /api/claw/contract` |
-| Dead / unwired | `lib/tools.js`, `lib/vault.js` | Implemented, not imported by `server.js` |
+| Secrets | `lib/secrets.js`, `lib/vault.js` | Vault hydrates at boot; tools use loaded keys. `lib/tools.js` remains the unused alternate registry. |
 
 Auth for `/api/*`: header `X-AION-Key` or `Authorization: Bearer`, matching `AION_API_KEYS` (admin: `AION_ADMIN_KEYS`). `/api/continuity-pack` is public. CORS allows `x-aion-key`.
 

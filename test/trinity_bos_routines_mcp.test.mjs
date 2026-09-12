@@ -155,6 +155,11 @@ test('connectors and MCP status expose names only — never secret values', () =
     assert.equal(n8n.token_configured, true);
     assert.ok(snap.configured.includes('cursor'));
     assert.ok(snap.configured.includes('n8n_mcp'));
+    for (const name of ['youtube', 'gemini', 'xai', 'kimi', 'openai', 'pinecone', 'hedra', 'composio', 'cursor']) {
+      const row = snap.connectors.find((c) => c.name === name);
+      assert.ok(row, `missing connector ${name}`);
+      assert.equal(typeof row.when, 'string');
+    }
   } finally {
     if (prevCursor === undefined) delete process.env.CURSOR_API_KEY;
     else process.env.CURSOR_API_KEY = prevCursor;

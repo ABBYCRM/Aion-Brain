@@ -11,8 +11,10 @@ you point it at the gateway and you're done.
 
 ## What it does
 
-- **Routes** every LLM call through a provider chain (OpenAI → A2E → Anthropic → Echo)
-  with circuit breaking, per-call cost/latency tracking, and a SQLite call log.
+- **Routes** every production LLM call through a Bitdeer-only chain
+  (`BITDEER_*` / `NVIDIA_*` aliases, nvidia catalog models) with circuit
+  breaking, per-call cost/latency tracking, and a SQLite call log. Extra
+  GEMINI/XAI/KIMI/OPENAI keys are optional fail-soft **side tools**, not chat defaults.
 - **Self-audits** with a 5-phase algorithm:
   1. **Inventory** — sha256 every `.ts/.js/.mjs/.json` file in the repo
   2. **Baseline** — measure health latency, memory, and self-availability
@@ -138,9 +140,8 @@ The gateway accepts credentials via headers on every request, so a single
 deployment can serve multiple apps without leaking keys:
 
 ```
-x-openai-key:    sk-...
-x-a2e-key:       ...
-x-anthropic-key: ...
+x-bitdeer-key:   ...                  (or x-nvidia-key)
+x-aion-key:      ...                  (AION /api/* auth)
 x-app-id:        my-app-name          (for call-log attribution)
 x-request-id:    uuid-v4              (echoed back, logged on errors)
 ```
@@ -180,11 +181,16 @@ the symbol isn't in the source, the audit will report it as `unverified`.
 
 ## Provider chain (env-driven)
 
-The default chain is built from env vars, in order:
-1. `OPENAI_API_KEY` → OpenAIProvider
-2. `A2E_API_KEY` → A2EProvider
-3. `ANTHROPIC_API_KEY` → AnthropicProvider
-4. (none) → EchoProvider (offline dev / tests)
+Production inference is **BITDEER-PRIMARY** (fail-closed):
+
+1. `BITDEER_API_KEY` / `BITDEER_API_KEYS` (or `NVIDIA_*` aliases) → Bitdeer
+2. `AION_ECHO_ONLY=1` → EchoProvider (hermetic tests / offline)
+3. (no Bitdeer key and not echo-only) → EchoProvider so local tests still boot
+
+`PRIMARY_MODEL` defaults to `zai-org/GLM-5`. `AGENT_MODEL` defaults to
+`mistralai/Mistral-Large-3-675B-Instruct-2512`. Production startup rejects
+non-catalog models. GEMINI/XAI/KIMI/OPENAI keys never join this chain;
+they back optional tools (`gemini_chat`, `xai_chat`, `kimi_chat`, `openai_chat`).
 
 Each provider auto-fails over to the next on retriable errors (5xx, 429, network).
 Non-retriable errors (401, 403, 400) stop the chain. Circuit breaker opens
