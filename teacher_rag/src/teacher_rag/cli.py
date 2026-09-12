@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from .coding_agent import ExecutingCodingAgent
 from .bos_omega import seed_bos_omega
+from .coding_agent import ExecutingCodingAgent
 from .curriculum import seed_curriculum
 from .executor import WorkspaceExecutor
 from .models import LearnerState
