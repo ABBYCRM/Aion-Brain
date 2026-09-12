@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.22 — feat: Trinity decision + BOS/routines/MCP HTTP
+- `POST /api/decision` returns Canon Trinity `GO`/`HOLD`/`ABORT` from `resolveBosGate` with structured Alpha/Praxis/Omega reasons, plus the existing 7-law `decision` (`COMMIT`/`DEFER`/`REJECT`). BOS topics retrieve via `bos_omega_rag` before judgment; empty store auto-ingests.
+- `GET`/`POST /api/memory/bos` — retrieve + ingest/upsert. `BosOmegaRag.upsertDocument` / `upsertIfMissing` / `retrieveOrIngest`. GET without `q` returns status and ingests if missing.
+- First-class routines HTTP over `RoutineStore`: `GET/POST /api/routines`, `GET/PUT/DELETE /api/routines/:name`, `POST .../pause|resume|run`. Pause/resume/delete plus tools `routine_upsert` / `routine_pause` / `routine_resume` / `routine_delete`.
+- `GET /api/connectors` and `GET /api/mcp/status` list configured integrations from env (names + booleans only; no secret values).
+- VIDEO-Engine-CCFL proxies these Brain paths (`docs/claw-contract.md`). Do not add a second RAG/routines/MCP stub on CCFL.
+- Tests: `test/trinity_bos_routines_mcp.test.mjs` plus contract HTTP for decision / memory POST / routines / connectors.
+
 ## 0.1.21 — feat: BOS-OMEGA RAG implant + Grok-Bot dynamic spawn
 - Cursor Cloud Agents client on Brain (`lib/cursor_cloud.js`): `cursor_launch` / `cursor_status` / `cursor_reply` / `cursor_cancel` plus `/api/cursor/*`. Reads `CURSOR_API_KEY` (name only; same DigitalOcean secret CCFL already holds). CCFL calls Brain — no second stub. Planner prefers `cursor_launch` for non-trivial repo/PR work. Launch prompt injects Trinity/evidence/methodical-notes/self-fix.
 - `knowledge/bos-omega/` Canon / Patch / Continuity corpus. Implanted into Node SQLite vectors (`lib/bos_omega_rag.js`), TeacherRAG (`teacher_rag/src/teacher_rag/bos_omega.py`), and AgentMemory facts (`bos-omega` / `weldon-angelos`).

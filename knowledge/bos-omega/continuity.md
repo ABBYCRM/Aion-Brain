@@ -17,14 +17,17 @@ Aion-Brain is the backend brain for VIDEO-Engine-CCFL. The live process is Node 
 | Tools | `lib/brain_tools.js`, `lib/agent_tool_extensions.js`, `lib/external_tools.js` | Search, browser, GDY, n8n, Firecrawl, TeacherRAG, BOS retrieve |
 | Episodic memory | `lib/memory.js` | SQLite episodes / facts / goals; `/api/chat` `contextPack` |
 | Call/audit store | `lib/store.js` | SQLite call log + audits |
-| BOS vector memory | `lib/bos_omega_rag.js` | Ingests `knowledge/bos-omega/*`; retrieve-before-answer |
+| BOS vector memory | `lib/bos_omega_rag.js` | Ingests `knowledge/bos-omega/*`; `GET/POST /api/memory/bos`; retrieve-before-answer |
+| Trinity gate HTTP | `lib/aion_kernel.js` `resolveBosGate` | `POST /api/decision` → GO/HOLD/ABORT + 7-law `decision` |
+| Routines | `lib/routines.js` | `GET/POST /api/routines*`; pause/resume/delete/run |
+| Connectors / MCP | `lib/connectors.js` | `GET /api/connectors`, `GET /api/mcp/status` (names only) |
 | TeacherRAG | `teacher_rag/` + `lib/teacher_rag.js` | Python SQLite vectors; `teacher_rag_teach` |
 | CCFL contract | `docs/claw-contract.md` | `POST /api/claw/execute`, `GET /api/claw/contract` |
 | Dead / unwired | `lib/tools.js`, `lib/vault.js` | Implemented, not imported by `server.js` |
 
 Auth for `/api/*`: header `X-AION-Key` or `Authorization: Bearer`, matching `AION_API_KEYS` (admin: `AION_ADMIN_KEYS`). `/api/continuity-pack` is public. CORS allows `x-aion-key`.
 
-VIDEO-Engine-CCFL talks to this brain with `AION_BASE_URL` + `AION_API_KEY` on `/api/state`, `/api/chat`, `/api/tools/:name`, and `/api/claw/execute`. Do not change those response shapes.
+VIDEO-Engine-CCFL talks to this brain with `AION_BASE_URL` + `AION_API_KEY` on `/api/state`, `/api/chat`, `/api/tools/:name`, `/api/claw/execute`, and now also proxies `/api/decision`, `/api/memory/bos`, `/api/routines*`, `/api/connectors`, `/api/mcp/status`. Do not change the existing claw execute response shape. Do not add a second RAG/routines/MCP stub on CCFL.
 
 ## Weldon Angelos — public-record facts
 

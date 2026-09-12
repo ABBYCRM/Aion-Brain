@@ -73,7 +73,7 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/continuity-pack`        | public       | 7 laws + 3 decision states + identity  |
 | GET    | `/api/models`                 | AION key     | Provider chain + probes                |
 | GET    | `/api/audit/recent`           | AION admin   | Last audit report                      |
-| POST   | `/api/decision`                | AION key     | 7-law kernel decision for a prompt     |
+| POST   | `/api/decision`                | AION key     | Trinity GO/HOLD/ABORT + 7-law decision |
 | POST   | `/api/chat`                   | AION key     | SSE chat with decision + attempt + open + delta + done |
 | GET    | `/api/state`                  | AION key     | primary/fallback models, providers, laws, states, uptime, active-state snapshot |
 | GET    | `/api/tools`                  | AION key     | Catalog of kernel-level tools (echo, datetime, free_energy, web_search) |
@@ -84,7 +84,18 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/claw/tools`             | AION key     | Same catalog as `/api/tools`           |
 | POST   | `/api/claw/tools/:name`       | AION key     | Same runner as `/api/tools/:name`      |
 | GET    | `/api/memory/episodes`        | AION admin   | Durable episodic memory read-back (SQLite) |
-| GET    | `/api/memory/bos?q=`          | AION key     | BOS-OMEGA Canon/Patch/Continuity retrieve |
+| GET    | `/api/memory/bos?q=`          | AION key     | BOS-OMEGA retrieve (auto-ingest if empty) |
+| POST   | `/api/memory/bos`             | AION key     | Ingest corpus / upsert documents / retrieve |
+| GET    | `/api/routines`               | AION key     | List named operator routines |
+| POST   | `/api/routines`               | AION key     | Create or upsert a routine |
+| GET    | `/api/routines/:name`         | AION key     | Read one routine |
+| PUT    | `/api/routines/:name`         | AION key     | Update a routine |
+| POST   | `/api/routines/:name/pause`   | AION key     | Pause a routine |
+| POST   | `/api/routines/:name/resume`  | AION key     | Resume a routine |
+| POST   | `/api/routines/:name/run`     | AION key     | Run a routine against real tools |
+| DELETE | `/api/routines/:name`         | AION key     | Delete a routine |
+| GET    | `/api/connectors`             | AION key     | Configured integrations (names only) |
+| GET    | `/api/mcp/status`             | AION key     | MCP servers configured (names only) |
 | POST   | `/api/agents/spawn`           | AION key     | Dynamic ephemeral subagent (goal + allowlist) |
 | GET    | `/api/agents/:id`             | AION key     | Spawned agent status |
 | GET    | `/api/agents/:id/result`      | AION key     | Spawned agent result |
@@ -247,7 +258,9 @@ llm-gateway/
 │   ├── brain_tools.js     ToolRegistry backing /api/tools* and the control loop
 │   ├── lattice.js         Multi-agent lattice (researcher/critic/executor), majority + critic veto
 │   ├── memory.js          Durable SQLite episodic memory, facts, goals; contextPack for prompt injection
-│   ├── bos_omega_rag.js   BOS-OMEGA ingest/retrieve (hash embeddings + optional Pinecone)
+│   ├── bos_omega_rag.js   BOS-OMEGA ingest/retrieve/upsert (hash embeddings + optional Pinecone)
+│   ├── routines.js        Named operator routines (list/create/pause/resume/delete/run)
+│   ├── connectors.js      Env integration inventory (names only; no secret values)
 │   ├── cursor_cloud.js    Cursor Cloud Agents v1 client (launch/status/reply/cancel)
 │   ├── agent_jobs.js      Dynamic spawn queue (SQLite + optional Inngest)
 │   ├── state.js           Active free-energy state (energy/uncertainty/stress); decision bias
