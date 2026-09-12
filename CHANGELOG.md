@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.24 — fix: assistant text is natural language, not INTERNAL STATE
+- `/api/chat` and `/api/claw/execute` never put control-loop internals into assistant-visible `delta` / `answer`. `self_state`, `phase`, `tool_start`, and `tool_end` stay separate SSE event types.
+- Actionable goals on `/api/chat` prefer the Aion execute path (unless `consult: true` / `agentic: false`). Consult-only questions stay single-shot.
+- System prompts and BOS operating rules forbid narrating INTERNAL STATE / phases / Trinity gates unless the user asks.
+- Planner dumps of SELF_STATE are treated as non-action and forced into a real tool.
+- Tests: `test/assistant_text.test.mjs` plus contract HTTP for clean execute/chat SSE.
+
 ## 0.1.23 — feat: teach all loaded provider keys end-to-end
 - Secrets resolve vault → boot snapshot → env (`lib/secrets.js`). `nvidia_only_guard` still strips OpenAI/Anthropic/xAI/A2E from `process.env` so `/v1` stays Bitdeer; tools use the snapshot. Vault hydrates at boot (`bootVault()`).
 - Tools + catalog + `connectorsSnapshot` (with when-to-use): `youtube_search` / `youtube_video`, `gemini_chat`, `xai_chat`, `kimi_chat`, `openai_chat` / `openai_embed` / `embeddings_embed`, `pinecone_query` / `pinecone_upsert`, `hedra_generate` / `hedra_job`, `composio_list_tools` / `composio_tool_schema` (ak_ live). `cursor_*` unchanged.

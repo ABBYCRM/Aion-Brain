@@ -44,6 +44,12 @@ import {
   cursorConfigured, cursorPublicStatus, cursorLaunch, cursorStatus, cursorReply, cursorCancel, cursorList,
 } from './lib/cursor_cloud.js';
 import { PHASE_ORDER } from './lib/self_state.js';
+import {
+  looksLikeInternalDump,
+  naturalLanguageAnswer,
+  preferExecutePath,
+  sanitizeAssistantText,
+} from './lib/assistant_text.js';
 import { getBosRag, seedBosFacts, isBosTopic, formatBosContext } from './lib/bos_omega_rag.js';
 import { AgentOrchestrator, defaultAgentJobsPath } from './lib/agent_jobs.js';
 import { RoutineStore, runRoutine } from './lib/routines.js';
@@ -179,7 +185,7 @@ app.get('/healthz', (req, res) => {
     ok: true,
     ts: Date.now(),
     uptime_s: Math.round(process.uptime()),
-    version: '0.1.23',
+    version: '0.1.24',
     secrets: { gdy: gdyConfigured(), cursor: cursorConfigured() },
   });
 });
@@ -188,7 +194,7 @@ app.get('/', (req, res) => {
   const last = store.lastAudit();
   res.json({
     name: 'llm-gateway',
-    version: '0.1.23',
+    version: '0.1.24',
     description: 'Plug-and-play LLM gateway with AION 7-law kernel, Bitdeer-first provider chain, ECC skill-pack auto-router, DuckDuckGo + Reddit + Steel.dev tools, and self-auditor',
     providers: router.providers.map(p => p.name),
     audit: last ? { ts: last.ts, mode: last.mode, status: last.status, p0: last.p0_count, p1: last.p1_count } : null,
@@ -503,10 +509,10 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'message_text_too_large', kind: 'invalid_request' });
   }
 
-  // Opt-in agentic path: same SSE names Claw already consumes (decision,
-  // delta, done) plus self_state / tool events. Default remains the
-  // single-shot consult so existing smoke tests stay stable.
-  if (req.body?.agentic === true) {
+  // Execute path for actionable goals (or explicit agentic:true). Consult
+  // stays single-shot unless the caller forces it with consult:true /
+  // agentic:false. Control-loop internals stay on their own SSE types.
+  if (preferExecutePath({ text: userText, body: req.body || {} })) {
     const sessionId = String(req.body?.session_id || req.header('x-aion-session-id') || principal.subject || req.id);
     const ctx = new MissionContext({ userInput: userText, history: messages.slice(0, -1) });
     const decision = resolveDecision(ctx);
@@ -516,29 +522,25 @@ app.post('/api/chat', async (req, res) => {
         goal: userText,
         acceptance: Array.isArray(req.body?.acceptance) ? req.body.acceptance : [],
         sessionId,
+        maxCycles: Number.isFinite(req.body?.max_cycles) ? req.body.max_cycles : undefined,
         model: req.body?.model || aionSettings.primaryModel,
       });
     } catch (e) {
       return res.status(500).json({ ok: false, error: e.message });
     }
-    const answer = answerFromAgent(ran);
+    const answer = answerFromAgent(ran, userText);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('X-AION-Decision', decision.state);
     res.setHeader('X-AION-Session-Id', sessionId);
+    res.setHeader('X-AION-Path', 'execute');
     res.flushHeaders && res.flushHeaders();
     res.write(`data: ${JSON.stringify({ type: 'decision', request_id: ctx.requestId, decision })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: 'self_state', self_state: ran.self_state, status: ran.status, verified: ran.verified })}\n\n`);
-    for (const c of ran.cycles || []) {
-      if (c.action?.kind === 'tool') {
-        res.write(`data: ${JSON.stringify({ type: 'tool_start', name: c.action.tool })}\n\n`);
-        res.write(`data: ${JSON.stringify({ type: 'tool_end', name: c.action.tool, ok: c.action.ok })}\n\n`);
-      }
-    }
+    writeAgentControlEvents(res, ran);
     res.write(`data: ${JSON.stringify({ type: 'attempt', provider: 'aion-agent', model: aionSettings.agentModel, index: 1 })}\n\n`);
     res.write(`data: ${JSON.stringify({ type: 'open', provider: 'aion-agent', model: aionSettings.agentModel, streaming: 'simulated' })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: 'delta', text: answer })}\n\n`);
+    writeAssistantDelta(res, answer);
     res.write(`data: ${JSON.stringify({ type: 'done', streaming: 'simulated', provider: 'aion-agent', model: aionSettings.agentModel, finish_reason: ran.complete ? 'stop' : 'incomplete', verified: ran.verified })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
@@ -560,6 +562,7 @@ app.post('/api/chat', async (req, res) => {
   // same-key callers share memory instead of nothing recalling at all.
   const sessionId = String(req.body?.session_id || req.header('x-aion-session-id') || principal.subject || req.id);
   res.setHeader('X-AION-Session-Id', sessionId);
+  res.setHeader('X-AION-Path', 'consult');
 
   // Memory pack: durable context from previous episodes + facts + goals
   let memoryPack = null;
@@ -687,16 +690,21 @@ app.post('/api/chat', async (req, res) => {
   let assistantText = '';
   try {
     for await (const evt of aionChain.stream({ messages: fullMessages, temperature, maxTokens })) {
-      res.write(evt);
       // Accumulate the real reply text so the post-stream episode below
       // remembers what was actually said, not a placeholder string.
       const m = evt.match(/^data: (.+)$/m);
+      let skipWrite = false;
       if (m) {
         try {
           const parsed = JSON.parse(m[1]);
-          if (parsed.type === 'delta' && typeof parsed.text === 'string') assistantText += parsed.text;
+          if (parsed.type === 'delta' && typeof parsed.text === 'string') {
+            assistantText += parsed.text;
+            // Never forward a control-loop dump as user-visible delta text.
+            if (looksLikeInternalDump(parsed.text)) skipWrite = true;
+          }
         } catch { /* non-JSON or [DONE] line */ }
       }
+      if (!skipWrite) res.write(evt);
     }
   } catch (e) {
     streamOk = false;
@@ -726,7 +734,7 @@ app.post('/api/chat', async (req, res) => {
     memory.rememberEpisode({
       sessionId,
       role: 'assistant',
-      content: assistantText || (streamOk ? '' : `[stream_error: ${streamError}]`),
+      content: sanitizeAssistantText(assistantText) || (streamOk ? '' : `[stream_error: ${streamError}]`),
       decisionState: lattice.consensus,
       decisionScore: decision.score,
       meta: { request_id: ctx.requestId, principal: principal.subject, lattice: lattice.consensus, stream_error: streamError },
@@ -752,7 +760,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     ok: true,
     app: 'aion-brain',
-    version: '0.1.23',
+    version: '0.1.24',
     environment: process.env.ENVIRONMENT || 'development',
     primary_model: aionSettings.primaryModel,
     agent_model: aionSettings.agentModel,
@@ -957,17 +965,18 @@ app.post('/api/tools/:name', async (req, res) => {
 // ---- Agentic control loop + VIDEO-Engine-CCFL claw contract ----
 // Claw (lib/claw/aion.ts) already calls /api/state, /api/chat, /api/tools/:name.
 // /api/claw/execute is the dead-loop-free path: SELF_STATE cycle + real tool
-// execution. /api/chat?agentic=true uses the same runtime and still emits
-// the existing SSE event names so aionConsult keeps working.
+// execution. /api/chat auto-runs that loop for actionable goals (or
+// agentic:true) and still emits decision/delta/done so aionConsult works.
+// Control events stay on their own types — never inside delta text.
 
 const CLAW_CONTRACT = Object.freeze({
-  version: '0.1.23',
+  version: '0.1.24',
   phases: PHASE_ORDER,
   endpoints: {
     execute: { method: 'POST', path: '/api/claw/execute', alias: '/api/agent/run' },
     tools_catalog: { method: 'GET', path: '/api/claw/tools', alias: '/api/tools' },
     tool_run: { method: 'POST', path: '/api/claw/tools/:name', alias: '/api/tools/:name' },
-    consult: { method: 'POST', path: '/api/chat', notes: 'Set agentic:true to run the control loop inside the existing SSE stream' },
+    consult: { method: 'POST', path: '/api/chat', notes: 'Consult-only by default. Actionable goals auto-run the execute loop unless consult:true or agentic:false. Assistant delta is natural language only; phase/tool_start/tool_end/self_state are separate events. CCFL must not concatenate those into the chat bubble.' },
     state: { method: 'GET', path: '/api/state' },
     spawn: { method: 'POST', path: '/api/agents/spawn', notes: 'Dynamic on-the-spot ephemeral subagent. Goal + optional tool allowlist + acceptance. Not a prefabricated role.' },
     agent_status: { method: 'GET', path: '/api/agents/:id' },
@@ -999,7 +1008,8 @@ const CLAW_CONTRACT = Object.freeze({
     acceptance: '[{ id, description, tool? }] — COMPLETE is refused until each check has evidence_id',
     session_id: 'optional; Claw should pass claw:<conversationId>',
     max_cycles: '1..24, default 8',
-    stream: 'if true, SSE events: phase, tool_start, tool_end, self_state, done',
+    stream: 'if true, SSE events: self_state, phase, tool_start, tool_end as their own types; delta is natural-language answer only; then done',
+    assistant_visible: 'Only type=delta (and JSON answer) are operator-visible text. Never concatenate self_state/phase/tool events into the chat bubble.',
   },
   self_state_fields: [
     'active_goal', 'current_plan', 'current_step', 'completed_steps', 'pending_steps',
@@ -1026,16 +1036,38 @@ function goalFromBody(body) {
     : (Array.isArray(lastUser.content) ? lastUser.content.map((p) => p.text || '').join('\n').trim() : '');
 }
 
-function answerFromAgent(result) {
-  const responds = (result.cycles || [])
-    .map((c) => c.action)
-    .filter((a) => a && a.kind === 'respond' && a.text)
-    .map((a) => a.text);
-  if (responds.length) return responds.at(-1);
-  const tools = result.self_state?.previous_tool_results || [];
-  const lastOk = [...tools].reverse().find((t) => t.ok);
-  if (lastOk) return `Executed ${lastOk.tool} (${lastOk.id}). Status ${result.status}. Verified=${result.verified}.`;
-  return `Status ${result.status}: ${result.reason}. Verified=${result.verified}.`;
+function answerFromAgent(result, goal = '') {
+  return result?.answer || naturalLanguageAnswer(result, { goal });
+}
+
+function writeSse(res, event) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function writeAgentControlEvents(res, result) {
+  writeSse(res, {
+    type: 'self_state',
+    self_state: result.self_state,
+    status: result.status,
+    verified: result.verified,
+  });
+  for (const c of result.cycles || []) {
+    writeSse(res, {
+      type: 'phase',
+      health: c.health?.status,
+      issues: c.issues?.issues,
+      action: c.action?.kind,
+      tool: c.action?.tool,
+    });
+    if (c.action?.kind === 'tool') {
+      writeSse(res, { type: 'tool_start', name: c.action.tool });
+      writeSse(res, { type: 'tool_end', name: c.action.tool, ok: c.action.ok });
+    }
+  }
+}
+
+function writeAssistantDelta(res, text) {
+  writeSse(res, { type: 'delta', text: sanitizeAssistantText(text) });
 }
 
 async function runAgentFromRequest(req, principal) {
@@ -1066,7 +1098,7 @@ async function runAgentFromRequest(req, principal) {
     longTermMemory,
     model: req.body?.model || aionSettings.primaryModel,
   });
-  return { goal, sessionId, result, answer: answerFromAgent(result) };
+  return { goal, sessionId, result, answer: answerFromAgent(result, goal) };
 }
 
 app.get('/api/claw/contract', (req, res) => {
@@ -1135,11 +1167,8 @@ async function handleAgentExecute(req, res) {
   res.setHeader('X-Accel-Buffering', 'no');
   res.setHeader('X-AION-Session-Id', sessionId);
   res.flushHeaders && res.flushHeaders();
-  res.write(`data: ${JSON.stringify({ type: 'self_state', self_state: result.self_state })}\n\n`);
-  for (const c of result.cycles || []) {
-    res.write(`data: ${JSON.stringify({ type: 'phase', health: c.health?.status, issues: c.issues?.issues, action: c.action?.kind, tool: c.action?.tool })}\n\n`);
-  }
-  res.write(`data: ${JSON.stringify({ type: 'delta', text: answer })}\n\n`);
+  writeAgentControlEvents(res, result);
+  writeAssistantDelta(res, answer);
   res.write(`data: ${JSON.stringify({ type: 'done', status: result.status, verified: result.verified, provider: 'aion-agent', model: aionSettings.agentModel })}\n\n`);
   res.write('data: [DONE]\n\n');
   res.end();
@@ -1327,7 +1356,7 @@ app.post('/brain/audit-and-fix', async (req, res) => {
 app.get('/brain/status', (req, res) => {
   res.json({
     name: 'BOS-OMEGA Brain',
-    version: '0.1.23',
+    version: '0.1.24',
     endpoints: [
       'POST /brain/audit-and-fix  { apply?: boolean, severities?: string[] }',
       'GET  /brain/status',

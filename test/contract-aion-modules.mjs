@@ -16,6 +16,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { AION_CONTINUITY_PACK, MissionContext, buildSystemPrompt, resolveDecision, DecisionState } from '../lib/aion_kernel.js';
+import { assistantVisibleFromSse, looksLikeInternalDump, parseSseEvents } from '../lib/assistant_text.js';
 import { AionChain } from '../lib/aion_chain.js';
 import { aionSettings } from '../lib/aion_settings.js';
 
@@ -256,6 +257,93 @@ test('Aion-Brain /api/claw/contract and execute', async () => {
   } else {
     assert.equal(body.verified, false);
   }
+  assert.equal(typeof body.answer, 'string');
+  assert.equal(looksLikeInternalDump(body.answer), false);
+  assert.equal(/INTERNAL[_\s-]?STATE/i.test(body.answer), false);
+  assert.equal(/Verified\s*=/i.test(body.answer), false);
+});
+
+test('claw execute SSE keeps internals off the assistant delta', async () => {
+  const r = await fetch(`${BRAIN}/api/claw/execute`, {
+    method: 'POST',
+    headers: {
+      'X-AION-Key': BRAIN_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({
+      goal: 'Return the current UTC time using the datetime tool if you can; otherwise reply.',
+      acceptance: [{ id: 'dt', description: 'datetime ran', tool: 'datetime' }],
+      max_cycles: 2,
+      stream: true,
+    }),
+  });
+  assert.equal(r.status, 200);
+  const raw = await r.text();
+  const events = parseSseEvents(raw);
+  assert.ok(events.some((e) => e.type === 'self_state'));
+  assert.ok(events.some((e) => e.type === 'phase' || e.type === 'tool_start'));
+  assert.ok(events.some((e) => e.type === 'delta'));
+  const visible = assistantVisibleFromSse(raw);
+  assert.equal(looksLikeInternalDump(visible), false);
+  assert.equal(/INTERNAL[_\s-]?STATE/i.test(visible), false);
+  assert.equal(/Verified\s*=/i.test(visible), false);
+  const deltaEvents = events.filter((e) => e.type === 'delta');
+  for (const ev of deltaEvents) {
+    assert.equal(typeof ev.self_state, 'undefined');
+    assert.equal(typeof ev.phase, 'undefined');
+  }
+});
+
+test('chat actionable goals use execute path; consult-only stays consult', async () => {
+  const headers = { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' };
+
+  const consult = await fetch(`${BRAIN}/api/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: 'Reply with the word READY.' }],
+      max_tokens: 64,
+    }),
+  });
+  assert.equal(consult.status, 200);
+  assert.equal(consult.headers.get('x-aion-path'), 'consult');
+  const consultRaw = await consult.text();
+  assert.match(consultRaw, /"type":"delta"/);
+  assert.equal(looksLikeInternalDump(assistantVisibleFromSse(consultRaw)), false);
+
+  const forcedConsult = await fetch(`${BRAIN}/api/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: 'Return the current UTC time using the datetime tool' }],
+      consult: true,
+      max_tokens: 64,
+    }),
+  });
+  assert.equal(forcedConsult.status, 200);
+  assert.equal(forcedConsult.headers.get('x-aion-path'), 'consult');
+
+  const exec = await fetch(`${BRAIN}/api/chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: 'Return the current UTC time using the datetime tool' }],
+      acceptance: [{ id: 'dt', description: 'datetime ran', tool: 'datetime' }],
+      max_cycles: 2,
+    }),
+  });
+  assert.equal(exec.status, 200);
+  assert.equal(exec.headers.get('x-aion-path'), 'execute');
+  const execRaw = await exec.text();
+  const events = parseSseEvents(execRaw);
+  assert.ok(events.some((e) => e.type === 'decision'));
+  assert.ok(events.some((e) => e.type === 'self_state'));
+  assert.ok(events.some((e) => e.type === 'delta'));
+  const visible = assistantVisibleFromSse(execRaw);
+  assert.equal(looksLikeInternalDump(visible), false);
+  assert.equal(/INTERNAL[_\s-]?STATE/i.test(visible), false);
+  assert.equal(/Verified\s*=/i.test(visible), false);
 });
 
 test('BOS RAG HTTP retrieve returns Trinity chunks', async () => {
