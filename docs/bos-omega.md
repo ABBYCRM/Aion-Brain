@@ -30,6 +30,24 @@ POST /api/agents/:id/cleanup
 
 Jobs persist in `$LLM_GATEWAY_DATA_DIR/agent-jobs.sqlite`. The in-process worker claims them. If `INNGEST_EVENT_KEY` is set, `aion/agent.spawned` and `aion/agent.finished` are also POSTed to Inngest (`INNGEST_EVENT_URL`, default `https://inn.gs/e`). Inngest is optional fan-out; SQLite is the source of truth so a restart does not drop queued work.
 
+## Cursor cloud agents (Brain-owned)
+
+Aion-Brain is the single client. VIDEO-Engine-CCFL must call Brain — do not add a second Cursor stub on CCFL.
+
+```http
+POST /api/cursor/launch   { "prompt": "...", "repository": "https://github.com/org/repo", "branch": "main" }
+GET  /api/cursor/:id
+GET  /api/cursor/:id/result
+POST /api/cursor/:id/reply   { "prompt": "steer text" }
+POST /api/cursor/:id/cancel  { "runId": "optional" }
+```
+
+Tools (same path): `cursor_launch` / `cursor_status` / `cursor_reply` / `cursor_cancel`.
+
+Env names only: `CURSOR_API_KEY` (same name already on DigitalOcean for CCFL), `CURSOR_API_BASE_URL` (default `https://api.cursor.com`), `CURSOR_DEFAULT_REPO`. If Brain and CCFL are co-deployed, one secret is enough. If they are separate hosts, set `CURSOR_API_KEY` on the Brain droplet (or copy the existing CCFL secret). Values are never committed.
+
+Launch prompt prepends BOS operating rules, Trinity/evidence/self-fix, and `methodical-notes/YYYY-MM-DD-<slug>` branch convention. Agents are spawned dynamically — not prefabricated roles. Persistence is Cursor's durable `/v1/agents` API.
+
 ## Env names the runtime reads
 
 Auth / process: `ENVIRONMENT`, `AION_API_KEYS`, `AION_ADMIN_KEYS`, `ALLOW_UNAUTHENTICATED_DEV`, `AION_ECHO_ONLY`, `PORT`, `LLM_GATEWAY_DATA_DIR`, `LLM_GATEWAY_REPORTS_DIR`, `APP_VERSION`, `CORS_ORIGINS`
@@ -38,7 +56,7 @@ Bitdeer / embeddings: `BITDEER_API_KEY`, `BITDEER_API_KEYS`, `BITDEER_BASE_URL`,
 
 Documented but stripped at boot by `lib/nvidia_only_guard.js`: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `A2E_API_KEY`, `XAI_API_KEY` (`XAI_BASE_URL`). Also listed for DO: `GEMINI_API_KEY`, `KIMI_API_KEY`.
 
-Tools: `STEEL_API_KEY`, `STEEL_BASE_URL`, `FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SCRAPINGBEE_API_KEY`, `SCRAPFLY_API_KEY`, `SCREENSHOTONE_ACCESS_KEY`, `SCREENSHOTONE_SECRET_KEY`, `COMPOSIO_API_KEY`, `E2B_API_KEY`, `HEDRA_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `GITHUB_PERSONAL_ACCESS_TOKEN`, `GITHUB_TOKEN`, `GDY_API_KEY`, `GDY_API_KEY_ALT`, `GDY_API_BASE`, `GDY_BASE_URL`
+Tools: `STEEL_API_KEY`, `STEEL_BASE_URL`, `FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SCRAPINGBEE_API_KEY`, `SCRAPFLY_API_KEY`, `SCREENSHOTONE_ACCESS_KEY`, `SCREENSHOTONE_SECRET_KEY`, `COMPOSIO_API_KEY`, `E2B_API_KEY`, `HEDRA_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `GITHUB_PERSONAL_ACCESS_TOKEN`, `GITHUB_TOKEN`, `GDY_API_KEY`, `GDY_API_KEY_ALT`, `GDY_API_BASE`, `GDY_BASE_URL`, `CURSOR_API_KEY`, `CURSOR_API_BASE_URL`, `CURSOR_DEFAULT_REPO`
 
 RAG / jobs: `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_INDEX_HOST`, `PINECONE_ENVIRONMENT`, `PINECONE_NAMESPACE`, `INNGEST_EVENT_KEY`, `INNGEST_EVENT_URL`, `TEACHER_RAG_PYTHON`, `TEACHER_RAG_TIMEOUT_MS`
 

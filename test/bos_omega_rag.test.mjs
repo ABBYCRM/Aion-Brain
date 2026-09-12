@@ -91,6 +91,7 @@ test('system prompt includes BOS operating rules and retrieved memory', () => {
   assert.match(prompt, /Canon > Patch > Continuity/);
   assert.match(prompt, /bos_omega_memory/);
   assert.match(prompt, /Lattice consensus: COMMIT/);
+  assert.match(prompt, /cursor_launch/);
   assert.match(bosOperatingRules(), /GO \(execute\), HOLD \(need evidence\), ABORT/);
   assert.deepEqual(AUTHORITY_ORDER[0], 'Canon');
 });

@@ -157,6 +157,10 @@ test('Aion-Brain exposes /api/tools catalog', async () => {
   assert.ok(names.includes('bos_omega_retrieve'));
   assert.ok(names.includes('spawn_agent'));
   assert.ok(names.includes('workspace_exec'));
+  assert.ok(names.includes('cursor_launch'));
+  assert.ok(names.includes('cursor_status'));
+  assert.ok(names.includes('cursor_reply'));
+  assert.ok(names.includes('cursor_cancel'));
 });
 
 test('Aion-Brain runs tools via POST /api/tools/:name', async () => {
@@ -199,6 +203,9 @@ test('Aion-Brain /api/state advertises the control loop', async () => {
   assert.equal(body.control_loop.phases.at(-1), 'TERMINATION_CHECK');
   assert.equal(typeof body.agent_model, 'string');
   assert.equal(typeof body.control_loop.tools_configured.GDY, 'boolean');
+  assert.equal(typeof body.control_loop.tools_configured.CURSOR_API_KEY, 'boolean');
+  assert.equal(typeof body.cursor.configured, 'boolean');
+  assert.equal(body.cursor.launch, '/api/cursor/launch');
   assert.equal(JSON.stringify(body).includes('gdy_live_'), false);
 });
 
@@ -207,6 +214,7 @@ test('healthz and claw tools catalog expose GDY boolean and new tools', async ()
   assert.equal(health.status, 200);
   const hz = await health.json();
   assert.equal(typeof hz.secrets.gdy, 'boolean');
+  assert.equal(typeof hz.secrets.cursor, 'boolean');
   assert.equal(JSON.stringify(hz).includes('gdy_live_'), false);
 
   const r = await fetch(`${BRAIN}/api/claw/tools`, { headers: { 'X-AION-Key': BRAIN_KEY } });
@@ -215,6 +223,7 @@ test('healthz and claw tools catalog expose GDY boolean and new tools', async ()
   const names = body.tools.map((t) => t.name);
   assert.ok(names.includes('gdy_search'));
   assert.ok(names.includes('arxiv_search'));
+  assert.ok(names.includes('cursor_launch'));
 });
 
 test('Aion-Brain /api/claw/contract and execute', async () => {
@@ -294,4 +303,17 @@ test('dynamic agent spawn/status/result/stop endpoints', async () => {
     headers: { 'X-AION-Key': BRAIN_KEY },
   });
   assert.ok(stop.status === 200);
+});
+
+test('cursor launch HTTP fails soft without CURSOR_API_KEY', async () => {
+  const r = await fetch(`${BRAIN}/api/cursor/launch`, {
+    method: 'POST',
+    headers: { 'X-AION-Key': BRAIN_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: 'Open a PR that implements login across the repo' }),
+  });
+  assert.equal(r.status, 400);
+  const body = await r.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'cursor_launch_unconfigured');
+  assert.equal(body.env, 'CURSOR_API_KEY');
 });

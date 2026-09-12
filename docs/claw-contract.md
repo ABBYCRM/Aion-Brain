@@ -119,6 +119,7 @@ New (env-backed, fail-soft if the key is missing — **no fabricated success**):
 | `github_repo` | `GITHUB_PERSONAL_ACCESS_TOKEN` (or `GITHUB_TOKEN`) | |
 | `gdy_search` / `gdy_rag_context` / `gdy_categories` / `gdy_tools` | `GDY_API_KEY` (optional `GDY_API_KEY_ALT` on 401) | Luis GDY OSINT tool directory. Base: `GDY_API_BASE` or `GDY_BASE_URL` + `/v1` |
 | `arxiv_search` | none | Official arXiv Atom API (`export.arxiv.org`). No GDY key |
+| `cursor_launch` / `cursor_status` / `cursor_reply` / `cursor_cancel` | `CURSOR_API_KEY` | Brain-owned Cursor Cloud Agents v1 client. Same env name as the CCFL DigitalOcean secret. HTTP aliases: `/api/cursor/launch`, `/api/cursor/:id`, `/api/cursor/:id/reply`, `/api/cursor/:id/cancel`. Fail-soft if unset. |
 
 `web_search` uses Tavily, then Exa, then DuckDuckGo.
 

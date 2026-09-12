@@ -201,6 +201,7 @@ test('routines seed retrieve-before-answer without being required for spawn', ()
     const names = store.list().map((r) => r.name);
     assert.ok(names.includes('retrieve-before-answer'));
     assert.ok(names.includes('trinity-gate'));
+    assert.ok(names.includes('cursor-repo-work'));
     assert.ok(store.get('evidence-loop'));
   } finally {
     store.close();

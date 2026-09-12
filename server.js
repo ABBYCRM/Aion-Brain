@@ -42,6 +42,9 @@ import { registerSQMRoutes } from './lib/sqm.js';
 import { pickSkills, buildSkillContext } from './lib/skill_router.js';
 import { AgentRuntime } from './lib/agent_runtime.js';
 import { configuredSecrets, classifyComposioKey, envSecret, gdyConfigured } from './lib/external_tools.js';
+import {
+  cursorConfigured, cursorPublicStatus, cursorLaunch, cursorStatus, cursorReply, cursorCancel, cursorList,
+} from './lib/cursor_cloud.js';
 import { PHASE_ORDER } from './lib/self_state.js';
 import { getBosRag, seedBosFacts, isBosTopic, formatBosContext } from './lib/bos_omega_rag.js';
 import { AgentOrchestrator, defaultAgentJobsPath } from './lib/agent_jobs.js';
@@ -216,7 +219,7 @@ app.get('/healthz', (req, res) => {
     ts: Date.now(),
     uptime_s: Math.round(process.uptime()),
     version: '0.1.21',
-    secrets: { gdy: gdyConfigured() },
+    secrets: { gdy: gdyConfigured(), cursor: cursorConfigured() },
   });
 });
 
@@ -254,6 +257,8 @@ app.get('/', (req, res) => {
       'POST /api/agents/spawn',
       'GET  /api/agents/:id',
       'GET  /api/agents/:id/result',
+      'POST /api/cursor/launch',
+      'GET  /api/cursor/:id',
       'GET  /api/memory/bos',
     ],
   });
@@ -750,6 +755,7 @@ app.get('/api/state', (req, res) => {
       persistence: 'sqlite',
       inngest: Boolean(String(process.env.INNGEST_EVENT_KEY || '').trim()),
     },
+    cursor: cursorPublicStatus(),
   });
 });
 
@@ -809,6 +815,11 @@ const CLAW_CONTRACT = Object.freeze({
     agent_result: { method: 'GET', path: '/api/agents/:id/result' },
     agent_steer: { method: 'POST', path: '/api/agents/:id/steer' },
     agent_stop: { method: 'POST', path: '/api/agents/:id/stop' },
+    cursor_launch: { method: 'POST', path: '/api/cursor/launch', notes: 'Dynamic Cursor cloud agent. Brain owns the client; CCFL calls this or cursor_launch tool. Requires CURSOR_API_KEY.' },
+    cursor_status: { method: 'GET', path: '/api/cursor/:id' },
+    cursor_result: { method: 'GET', path: '/api/cursor/:id/result' },
+    cursor_reply: { method: 'POST', path: '/api/cursor/:id/reply' },
+    cursor_cancel: { method: 'POST', path: '/api/cursor/:id/cancel' },
     memory_bos: { method: 'GET', path: '/api/memory/bos?q=' },
   },
   auth: 'X-AION-Key or Authorization: Bearer (must match AION_API_KEYS)',
@@ -1038,6 +1049,65 @@ app.post('/api/agents/:id/cleanup', (req, res) => {
     if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
     res.json({ ok: true, job });
   } catch (e) { return agentHttpError(res, e); }
+});
+
+function cursorHttpStatus(result, launched = false) {
+  if (result.ok) return launched ? 202 : 200;
+  if (String(result.error || '').includes('unconfigured')) return 400;
+  if (result.error === 'prompt_required' || result.error === 'id_required' || result.error === 'run_id_required') return 400;
+  if (String(result.error || '').includes('http_404')) return 404;
+  return 400;
+}
+
+app.post('/api/cursor/launch', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorLaunch({
+    prompt: req.body?.prompt || req.body?.goal || goalFromBody(req.body || {}),
+    repository: req.body?.repository || req.body?.repo,
+    repos: req.body?.repos,
+    branch: req.body?.branch,
+    startingRef: req.body?.startingRef,
+    name: req.body?.name,
+    model: req.body?.model,
+    autoCreatePR: req.body?.autoCreatePR,
+    workOnCurrentBranch: req.body?.workOnCurrentBranch,
+    mode: req.body?.mode,
+  });
+  res.status(cursorHttpStatus(result, true)).json({ ok: result.ok, source: 'aion-brain', ...result });
+});
+
+app.get('/api/cursor', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorList({ limit: req.query.limit, cursor: req.query.cursor });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.get('/api/cursor/:id', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorStatus({ id: req.params.id, runId: req.query.runId });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.get('/api/cursor/:id/result', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorStatus({ id: req.params.id, runId: req.query.runId });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.post('/api/cursor/:id/reply', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorReply({
+    id: req.params.id,
+    prompt: req.body?.prompt || req.body?.message || req.body?.text,
+    mode: req.body?.mode,
+  });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
+});
+
+app.post('/api/cursor/:id/cancel', async (req, res) => {
+  try { aionRequire(req); } catch (e) { return res.status(e.statusCode || 401).json(e.public || { detail: e.message }); }
+  const result = await cursorCancel({ id: req.params.id, runId: req.body?.runId || req.query.runId });
+  res.status(cursorHttpStatus(result)).json({ ok: result.ok, ...result });
 });
 
 // ---- Audit routes ----

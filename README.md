@@ -90,6 +90,10 @@ Same contract as the AION v2.x FastAPI backend. Drop-in compatible.
 | GET    | `/api/agents/:id/result`      | AION key     | Spawned agent result |
 | POST   | `/api/agents/:id/steer`       | AION key     | Steer a spawned agent |
 | POST   | `/api/agents/:id/stop`        | AION key     | Stop a spawned agent |
+| POST   | `/api/cursor/launch`          | AION key     | Dynamic Cursor cloud agent (CURSOR_API_KEY) |
+| GET    | `/api/cursor/:id`             | AION key     | Cursor agent + latest run status |
+| POST   | `/api/cursor/:id/reply`       | AION key     | Steer a Cursor cloud agent |
+| POST   | `/api/cursor/:id/cancel`      | AION key     | Cancel the active Cursor run |
 
 Auth header: `X-AION-Key: <key>` or `Authorization: Bearer <key>`. The CORS
 preflight response advertises `x-aion-key` in `access-control-allow-headers`
@@ -244,6 +248,7 @@ llm-gateway/
 │   ├── lattice.js         Multi-agent lattice (researcher/critic/executor), majority + critic veto
 │   ├── memory.js          Durable SQLite episodic memory, facts, goals; contextPack for prompt injection
 │   ├── bos_omega_rag.js   BOS-OMEGA ingest/retrieve (hash embeddings + optional Pinecone)
+│   ├── cursor_cloud.js    Cursor Cloud Agents v1 client (launch/status/reply/cancel)
 │   ├── agent_jobs.js      Dynamic spawn queue (SQLite + optional Inngest)
 │   ├── state.js           Active free-energy state (energy/uncertainty/stress); decision bias
 │   ├── router.js          LLM provider chain + circuit breaker

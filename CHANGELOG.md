@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## 0.1.21 — feat: BOS-OMEGA RAG implant + Grok-Bot dynamic spawn
+- Cursor Cloud Agents client on Brain (`lib/cursor_cloud.js`): `cursor_launch` / `cursor_status` / `cursor_reply` / `cursor_cancel` plus `/api/cursor/*`. Reads `CURSOR_API_KEY` (name only; same DigitalOcean secret CCFL already holds). CCFL calls Brain — no second stub. Planner prefers `cursor_launch` for non-trivial repo/PR work. Launch prompt injects Trinity/evidence/methodical-notes/self-fix.
 - `knowledge/bos-omega/` Canon / Patch / Continuity corpus. Implanted into Node SQLite vectors (`lib/bos_omega_rag.js`), TeacherRAG (`teacher_rag/src/teacher_rag/bos_omega.py`), and AgentMemory facts (`bos-omega` / `weldon-angelos`).
 - Retrieval-before-answer on `/api/chat` for BOS topics; `GET /api/memory/bos?q=`; tool `bos_omega_retrieve`. Hash embeddings work offline (no paid API).
 - Trinity GO/HOLD/ABORT + Grok-Bot operating rules in `buildSystemPrompt` (AION COMMIT/DEFER/REJECT unchanged).
